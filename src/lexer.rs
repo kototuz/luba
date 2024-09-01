@@ -1,0 +1,103 @@
+use std::fmt;
+
+#[derive(Debug)]
+pub struct Lexer<'a> {
+    src: &'a [u8],
+}
+
+#[derive(Debug)]
+pub enum TokenKind {
+    Name,
+    StrLit,
+    Num,
+
+    Eq,
+    Plus,
+    Minus,
+    Slash,
+    Star,
+    Semicolon
+}
+
+#[derive(Debug)]
+pub enum LexerError {
+    UndefinedToken
+}
+
+impl fmt::Display for LexerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match *self {
+            LexerError::UndefinedToken => "undefined token"
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct Token<'a> {
+    pub data: &'a [u8],
+    pub kind: TokenKind
+}
+
+#[allow(unused)]
+impl<'a> Lexer<'a> {
+    pub fn new(src: &'a [u8]) -> Self {
+        Self { src }
+    }
+
+    pub fn next_token(&mut self) -> Option<Result<Token, LexerError>> {
+        self.src = self.src.trim_ascii_start();
+
+        if self.src.is_empty() { return None; }
+
+        let mut result_len = 1;
+        let mut result = Token { data: &self.src, kind: TokenKind::Name };
+        match self.src[0] {
+            b'=' => result.kind = TokenKind::Eq,
+            b'+' => result.kind = TokenKind::Plus,
+            b'-' => result.kind = TokenKind::Minus,
+            b'*' => result.kind = TokenKind::Star,
+            b'/' => result.kind = TokenKind::Slash,
+            b';' => result.kind = TokenKind::Semicolon,
+            _    => {
+                if self.src[0].is_ascii_alphabetic() {
+                    result.kind = TokenKind::Name;
+                    while result.data[result_len].is_ascii_alphanumeric() { result_len += 1; }
+                } else if self.src[0].is_ascii_digit() {
+                    result.kind = TokenKind::Num;
+                    while result.data[result_len].is_ascii_digit() { result_len += 1; }
+                } else if self.src[0] == b'"' {
+                    result.kind = TokenKind::StrLit;
+                    while result.data[result_len] != b'"' { result_len += 1 }
+                } else {
+                    return Some(Err(LexerError::UndefinedToken));
+                }
+            }
+        }
+
+        result.data = &result.data[..result_len];
+        self.src = &self.src[result_len..];
+        Some(Ok(result))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_lexer_next_token() {
+        let source = "num1 = 324;\n\t    num2 =    345;\n\n\nnum3=4;".as_bytes();
+        let mut lexer = super::Lexer::new(source);
+
+        assert_eq!("num1".as_bytes(),  lexer.next_token().unwrap().unwrap().data);
+        assert_eq!("=".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
+        assert_eq!("324".as_bytes(),   lexer.next_token().unwrap().unwrap().data);
+        assert_eq!(";".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
+        assert_eq!("num2".as_bytes(),  lexer.next_token().unwrap().unwrap().data);
+        assert_eq!("=".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
+        assert_eq!("345".as_bytes(),   lexer.next_token().unwrap().unwrap().data);
+        assert_eq!(";".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
+        assert_eq!("num3".as_bytes(),  lexer.next_token().unwrap().unwrap().data);
+        assert_eq!("=".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
+        assert_eq!("4".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
+        assert_eq!(";".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
+    }
+}
