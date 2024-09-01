@@ -1,13 +1,27 @@
-use std::str;
-
 mod lexer;
 
 fn main() {
-    let str = "num1 = 10;\nnum2 = 20;\nnum3 = 3*4;".as_bytes();
-    let mut lex = lexer::Lexer::new(str);
-    while let Some(res) = lex.next_token() {
-        if let Ok(tok) = res {
-            println!("({}, {:?})", str::from_utf8(tok.data).unwrap(), tok.kind);
-        }
+    let source = "num1 = 324;\n\t    num2 =    345;\n\n\nnum3=4;\"Hello world\"".as_bytes();
+    let lexer = lexer::Lexer::new(source);
+
+    let expected = [
+        "num1".as_bytes(),
+        "=".as_bytes(),
+        "324".as_bytes(),
+        ";".as_bytes(),
+        "num2".as_bytes(),
+        "=".as_bytes(),
+        "345".as_bytes(),
+        ";".as_bytes(),
+        "num3".as_bytes(),
+        "=".as_bytes(),
+        "4".as_bytes(),
+        ";".as_bytes(),
+        "\"Hello world\"".as_bytes(),
+    ];
+
+    for (i, x) in lexer.enumerate() {
+        println!("{}", x.as_ref().unwrap());
+        assert_eq!(expected[i], x.unwrap().data);
     }
 }

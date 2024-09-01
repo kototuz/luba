@@ -38,15 +38,17 @@ pub struct Token<'a> {
     pub kind: TokenKind
 }
 
-#[allow(unused)]
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a [u8]) -> Self {
         Self { src }
     }
+}
 
-    pub fn next_token(&mut self) -> Option<Result<Token, LexerError>> {
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Result<Token<'a>, LexerError>;
+
+    fn next(&mut self) -> Option<Result<Token<'a>, LexerError>> {
         self.src = self.src.trim_ascii_start();
-
         if self.src.is_empty() { return None; }
 
         let mut result_len = 1;
@@ -68,6 +70,7 @@ impl<'a> Lexer<'a> {
                 } else if self.src[0] == b'"' {
                     result.kind = TokenKind::StrLit;
                     while result.data[result_len] != b'"' { result_len += 1 }
+                    result_len += 1;
                 } else {
                     return Some(Err(LexerError::UndefinedToken));
                 }
@@ -80,24 +83,37 @@ impl<'a> Lexer<'a> {
     }
 }
 
+impl<'a> fmt::Display for Token<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({}, {:?})", std::str::from_utf8(self.data).unwrap(), self.kind)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn test_lexer_next_token() {
         let source = "num1 = 324;\n\t    num2 =    345;\n\n\nnum3=4;".as_bytes();
-        let mut lexer = super::Lexer::new(source);
+        let lexer = super::Lexer::new(source);
 
-        assert_eq!("num1".as_bytes(),  lexer.next_token().unwrap().unwrap().data);
-        assert_eq!("=".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
-        assert_eq!("324".as_bytes(),   lexer.next_token().unwrap().unwrap().data);
-        assert_eq!(";".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
-        assert_eq!("num2".as_bytes(),  lexer.next_token().unwrap().unwrap().data);
-        assert_eq!("=".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
-        assert_eq!("345".as_bytes(),   lexer.next_token().unwrap().unwrap().data);
-        assert_eq!(";".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
-        assert_eq!("num3".as_bytes(),  lexer.next_token().unwrap().unwrap().data);
-        assert_eq!("=".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
-        assert_eq!("4".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
-        assert_eq!(";".as_bytes(),     lexer.next_token().unwrap().unwrap().data);
+        let expected = [
+            "num1".as_bytes(),
+            "=".as_bytes(),
+            "324".as_bytes(),
+            ";".as_bytes(),
+            "num2".as_bytes(),
+            "=".as_bytes(),
+            "345".as_bytes(),
+            ";".as_bytes(),
+            "num3".as_bytes(),
+            "=".as_bytes(),
+            "4".as_bytes(),
+            ";".as_bytes(),
+            "\"Hello world\"".as_bytes(),
+        ];
+
+        for (i, x) in lexer.enumerate() {
+            assert_eq!(expected[i], x.unwrap().data);
+        }
     }
 }
