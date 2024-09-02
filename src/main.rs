@@ -21,7 +21,7 @@ fn main() {
     ];
 
     for (i, x) in lexer.enumerate() {
-        println!("{}", x.as_ref().unwrap());
-        assert_eq!(expected[i], x.unwrap().data);
+        println!("{}", x);
+        assert_eq!(expected[i], x.data);
     }
 }

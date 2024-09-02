@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, process};
 
 #[derive(Debug)]
 pub struct Lexer<'a> {
@@ -20,19 +20,6 @@ pub enum TokenKind {
 }
 
 #[derive(Debug)]
-pub enum LexerError {
-    UndefinedToken
-}
-
-impl fmt::Display for LexerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match *self {
-            LexerError::UndefinedToken => "undefined token"
-        })
-    }
-}
-
-#[derive(Debug)]
 pub struct Token<'a> {
     pub data: &'a [u8],
     pub kind: TokenKind
@@ -45,9 +32,9 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<Token<'a>, LexerError>;
+    type Item = Token<'a>;
 
-    fn next(&mut self) -> Option<Result<Token<'a>, LexerError>> {
+    fn next(&mut self) -> Option<Self::Item> {
         self.src = self.src.trim_ascii_start();
         if self.src.is_empty() { return None; }
 
@@ -72,14 +59,15 @@ impl<'a> Iterator for Lexer<'a> {
                     while result.data[result_len] != b'"' { result_len += 1 }
                     result_len += 1;
                 } else {
-                    return Some(Err(LexerError::UndefinedToken));
+                    eprintln!("ERROR: undefined token at {:?}", std::str::from_utf8(&self.src[..5]).unwrap());
+                    process::exit(1);
                 }
             }
         }
 
         result.data = &result.data[..result_len];
         self.src = &self.src[result_len..];
-        Some(Ok(result))
+        Some(result)
     }
 }
 
@@ -113,7 +101,7 @@ mod tests {
         ];
 
         for (i, x) in lexer.enumerate() {
-            assert_eq!(expected[i], x.unwrap().data);
+            assert_eq!(expected[i], x.data);
         }
     }
 }
