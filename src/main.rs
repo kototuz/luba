@@ -1,27 +1,15 @@
 mod lexer;
+mod parser;
 
 fn main() {
-    let source = "num1 = 324;\n\t    num2 =    345;\n\n\nnum3=4;\"Hello world\"".as_bytes();
-    let lexer = lexer::Lexer::new(source);
+    let source = "num1 = 324 + 2 + 3 + 5 + 6; num2 = 234;";
+    let mut lexer = lexer::Lexer::new(source);
 
-    let expected = [
-        "num1".as_bytes(),
-        "=".as_bytes(),
-        "324".as_bytes(),
-        ";".as_bytes(),
-        "num2".as_bytes(),
-        "=".as_bytes(),
-        "345".as_bytes(),
-        ";".as_bytes(),
-        "num3".as_bytes(),
-        "=".as_bytes(),
-        "4".as_bytes(),
-        ";".as_bytes(),
-        "\"Hello world\"".as_bytes(),
-    ];
-
-    for (i, x) in lexer.enumerate() {
+    for x in lexer.by_ref() {
         println!("{}", x);
-        assert_eq!(expected[i], x.data);
     }
+
+    let (exprs, stmts) = parser::parse(&mut lexer::Lexer::new(source));
+    println!("{exprs:?}");
+    println!("{stmts:?}");
 }
