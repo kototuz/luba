@@ -1,3 +1,0 @@
-var1 = 10;
-var2 = 12;
-var3 = "Hello world";
