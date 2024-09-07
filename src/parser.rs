@@ -1,16 +1,13 @@
 use crate::lexer as lex;
 use std::process;
-
-pub struct Parser<'a> {
-    expr_buf: Vec<Expr<'a>>,
-}
+use std::ops::Range;
 
 #[derive(Debug)]
 pub enum Stmt<'a> {
-    VarAssign { name: &'a str, expr: Expr<'a> }
+    VarAssign { name: &'a str, expr: Range<usize> }
 }
 
-#[derive(Debug,  Clone)]
+#[derive(Debug,  Clone, PartialEq)]
 pub enum OpKind {
     Sub,
     Add,
@@ -18,31 +15,20 @@ pub enum OpKind {
     Div,
 }
 
-#[derive(Debug)]
-struct Op {
-    lhs_idx: usize,
-    rhs_idx: usize,
-    kind:    OpKind
-}
-
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Expr<'a> {
     Var(&'a str),
     Num(i32),
-    Op(Op)
+    Op(OpKind)
 }
 
 
-//impl<'a> Parser<'a> {
-//    pub fn new() -> Self {
-//        Self { expr_buf: Vec::new() }
-//    }
 
 pub fn parse<'a>(lex: &mut lex::Lexer<'a>) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
     use lex::*;
 
-    let mut stmt_buf: Vec<Stmt> = Vec::new();
     let mut expr_buf: Vec<Expr> = Vec::new();
+    let mut stmt_buf: Vec<Stmt> = Vec::new();
 
     loop {
         if let Some(tok) = lex.next() {
@@ -59,7 +45,7 @@ pub fn parse<'a>(lex: &mut lex::Lexer<'a>) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
     }
 }
 
-fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Expr<'a> {
+fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Range<usize> {
     use lex::*;
 
     fn parse_num(src: &str) -> i32 {
@@ -69,62 +55,57 @@ fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Exp
         })
     }
 
-    // var = a+b+c+d;
+    // TODO: make seperate function for lexer. Something like `expect_oneof_next()`
+    fn expect_read<'a>(lex: &mut Lexer<'a>) -> Expr<'a> {
+        let tok = lex.expect_next();
+        match tok.kind {
+            TokenKind::Name => Expr::Var(tok.data),
+            TokenKind::Num  => Expr::Num(parse_num(tok.data)),
+            _ => unreachable!()
+        }
+    }
 
-    let mut token: Token;
-    let mut expr: Expr;
-    let mut op = Op { lhs_idx: 0, rhs_idx: 0, kind: OpKind::Add };
+    // 1 + 1     => 11+
+    // 1 + 1 + 1 => 11+ 1+ 1+ 1+ 1+ 1+
+    // 1 - 1 - 1 => 11- 1-
+    // 1 + 1 * 1 => 1 11* +
+    // 1 + 1 / 1 => 1 11/ +
 
-    token = lex.expect_next();
-    expr = match token.kind {
-        TokenKind::Name => Expr::Var(token.data),
-        TokenKind::Num  => Expr::Num(parse_num(token.data)),
-        _ => unreachable!()
-    };
+    let mut op: OpKind;
+    let mut ret = Range { start: expr_buf.len(), end: 0 };
 
-    op.kind = match lex.expect_peek().kind {
+    expr_buf.push(expect_read(lex));
+
+    // TODO: *, /
+    op = match lex.expect_peek().kind {
         TokenKind::Plus  => OpKind::Add,
         TokenKind::Minus => OpKind::Sub,
         TokenKind::Star  => OpKind::Mul,
         TokenKind::Slash => OpKind::Div,
-        _ => return expr
+        _ => {
+            ret.end = expr_buf.len();
+            return ret;
+        }
     };
-
     let _ = lex.next();
 
-    expr_buf.push(expr);
-    op.lhs_idx = expr_buf.len()-1;
-    op.rhs_idx = expr_buf.len();
-
     loop {
-        token = lex.expect_next();
-        expr = match token.kind {
-            TokenKind::Name => Expr::Var(token.data),
-            TokenKind::Num  => Expr::Num(parse_num(token.data)),
-            _ => unreachable!()
-        };
+        expr_buf.push(expect_read(lex));
+        expr_buf.push(Expr::Op(op));
 
-        expr_buf.push(expr);
-
-        let kind = match lex.expect_peek().kind {
+        op = match lex.expect_peek().kind {
             TokenKind::Plus  => OpKind::Add,
             TokenKind::Minus => OpKind::Sub,
             TokenKind::Star  => OpKind::Mul,
             TokenKind::Slash => OpKind::Div,
-            _  => return Expr::Op(op)
+            _  => {
+                ret.end = expr_buf.len();
+                return ret;
+            }
         };
-
         let _ = lex.next();
-
-        expr_buf.push(Expr::Op(op));
-        op = Op {
-            lhs_idx: expr_buf.len()-1,
-            rhs_idx: expr_buf.len(),
-            kind
-        };
     }
 }
-//}
 
 
 
@@ -134,24 +115,26 @@ mod tests {
 
     #[test]
     fn parse_test() {
-        let source = "a = 1 + 2 + 3;";
+        let source = "a = 1 + 2 + 3 + b;";
         let (exprs, stmts) = parse(&mut lex::Lexer::new(source));
 
-        assert_eq!(exprs.len(), 4);
-        assert!(matches!(&exprs[0], Expr::Num(1)));
-        assert!(matches!(&exprs[1], Expr::Num(2)));
-        let Expr::Op(op) = &exprs[2] else { panic!(); };
-        assert_eq!(op.lhs_idx, 0);
-        assert_eq!(op.rhs_idx, 1);
-        assert!(matches!(op.kind, OpKind::Add));
-        assert!(matches!(&exprs[3], Expr::Num(3)));
+        // 12+ 3+ b+
+        let expected = [
+            Expr::Num(1),
+            Expr::Num(2),
+            Expr::Op(OpKind::Add),
+            Expr::Num(3),
+            Expr::Op(OpKind::Add),
+            Expr::Var("b"),
+            Expr::Op(OpKind::Add)
+        ];
 
-        assert_eq!(stmts.len(), 1);
         let Stmt::VarAssign { name, expr } = &stmts[0];
-        let Expr::Op(op) = expr else { panic!(); };
-        assert_eq!(name, &"a");
-        assert_eq!(op.lhs_idx, 2);
-        assert_eq!(op.rhs_idx, 3);
-        assert!(matches!(op.kind, OpKind::Add));
+        assert_eq!(*name, "a");
+        assert_eq!(*expr, (0..expected.len()));
+
+        for (i, expr) in exprs.iter().enumerate() {
+            assert_eq!(*expr, expected[i]);
+        }
     }
 }
