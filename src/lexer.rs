@@ -32,6 +32,7 @@ pub struct Token<'a> {
 
 
 // TODO: needs refactoring
+// TODO: we can split `expect` methods and leave just `next()` and `peek()`
 impl<'a> Lexer<'a> {
     pub fn new(src: &'a str) -> Self {
         Self { inner: LexerIterator{src}.peekable() }
