@@ -71,13 +71,11 @@ fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Ran
     // 1 + 1 * 1 => 1 11* +
     // 1 + 1 / 1 => 1 11/ +
 
-    let mut op: OpKind;
     let mut ret = Range { start: expr_buf.len(), end: 0 };
 
     expr_buf.push(expect_read(lex));
 
-    // TODO: *, /
-    op = match lex.expect_peek().kind {
+    let mut prev_op = match lex.expect_peek().kind {
         TokenKind::Plus  => OpKind::Add,
         TokenKind::Minus => OpKind::Sub,
         TokenKind::Star  => OpKind::Mul,
@@ -89,21 +87,51 @@ fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Ran
     };
     let _ = lex.next();
 
+    expr_buf.push(expect_read(lex));
     loop {
-        expr_buf.push(expect_read(lex));
-        expr_buf.push(Expr::Op(op));
+        // 1 + 2 * 3 => 1 23* +
+        // 1 * 2 + 3 => 12* 3 +
+        // 1 * 2 * 3 => 1 23* *
+        // 1 + 2 * 3 * 4 => 1 23* 4* 5* 6*
+        // 1 + 2 * 3 + 2 => 1 23*+ 2
+        // 1 + 2 / 3 * 4 => 123/ 4*+
+        // 1 / 2 * 3 * 4 * 5 => 12/34*5*
+        // 1 / 2 / 3 * 4 / 5 => 1 23/ /4*5/
 
-        op = match lex.expect_peek().kind {
-            TokenKind::Plus  => OpKind::Add,
-            TokenKind::Minus => OpKind::Sub,
-            TokenKind::Star  => OpKind::Mul,
-            TokenKind::Slash => OpKind::Div,
+        prev_op = match lex.expect_peek().kind {
+            TokenKind::Plus  => {
+                let _ = lex.next();
+                expr_buf.push(Expr::Op(prev_op));
+                OpKind::Add
+            },
+            TokenKind::Star  => {
+                let _ = lex.next();
+                if prev_op != OpKind::Div {
+                    expr_buf.push(expect_read(lex));
+                    expr_buf.push(Expr::Op(OpKind::Mul));
+                    continue;
+                }
+                expr_buf.push(Expr::Op(prev_op));
+                OpKind::Mul
+            },
+            TokenKind::Slash => {
+                let _ = lex.next();
+                if prev_op != OpKind::Mul {
+                    expr_buf.push(expect_read(lex));
+                    expr_buf.push(Expr::Op(OpKind::Div));
+                    continue;
+                }
+                expr_buf.push(Expr::Op(prev_op));
+                OpKind::Div
+            },
             _  => {
+                expr_buf.push(Expr::Op(prev_op));
                 ret.end = expr_buf.len();
                 return ret;
             }
         };
-        let _ = lex.next();
+
+        expr_buf.push(expect_read(lex));
     }
 }
 
@@ -115,26 +143,48 @@ mod tests {
 
     #[test]
     fn parse_test() {
-        let source = "a = 1 + 2 + 3 + b;";
-        let (exprs, stmts) = parse(&mut lex::Lexer::new(source));
+        use super::Expr::*;
 
-        // 12+ 3+ b+
-        let expected = [
-            Expr::Num(1),
-            Expr::Num(2),
-            Expr::Op(OpKind::Add),
-            Expr::Num(3),
-            Expr::Op(OpKind::Add),
-            Expr::Var("b"),
-            Expr::Op(OpKind::Add)
+        // Syntax: v1;v2;op
+        // 1 + 2          =>   12+
+        // 1 + 2 + 3      =>   12+ 3 +
+        // 1 + 2*3        =>   1 23* +
+        // 1 * 2 * 3      =>   1 23* *
+        // 1 + 2*3*4      =>   1 23* 4* +
+        // 1 + 2*3*4 + 5  =>   1 23* 4* + 5+
+        // 1 + 2*3 + 4*5  =>   1 23* + 45* +
+        // 1 / 2 * 3      =>   12/ 3*
+        // 1 / 2 * 3 * 4  =>   12/ 34**
+        // 1 / 2 * 3 / 4  =>   12/ 3* 4/
+        let map: &[(&str, &[Expr])] = &[
+            ("1 + 2;",         &[Num(1), Num(2), Op(OpKind::Add)]),
+            ("1 + 2 + 3;",     &[Num(1), Num(2), Op(OpKind::Add), Num(3), Op(OpKind::Add)]),
+            ("1 + 2*3;",       &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Op(OpKind::Add)]),
+            ("1 * 2 * 3;",     &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Op(OpKind::Mul)]),
+            ("1 + 2*3*4;",     &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Num(4), Op(OpKind::Mul), Op(OpKind::Add)]),
+            ("1 + 2*3*4 + 5;", &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Num(4), Op(OpKind::Mul), Op(OpKind::Add), Num(5), Op(OpKind::Add)]),
+            ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Op(OpKind::Add), Num(4), Num(5), Op(OpKind::Mul), Op(OpKind::Add)]),
+            ("1 / 2 * 3;",     &[Num(1), Num(2), Op(OpKind::Div), Num(3), Op(OpKind::Mul)]),
+            ("1 / 2 * 3 * 4;", &[Num(1), Num(2), Op(OpKind::Div), Num(3), Num(4), Op(OpKind::Mul), Op(OpKind::Mul)]),
+            ("1 / 2 * 3 / 4;", &[Num(1), Num(2), Op(OpKind::Div), Num(3), Op(OpKind::Mul), Num(4), Op(OpKind::Div)])
         ];
 
-        let Stmt::VarAssign { name, expr } = &stmts[0];
-        assert_eq!(*name, "a");
-        assert_eq!(*expr, (0..expected.len()));
+        let mut exprs: Vec<Expr> = Vec::new();
+        for test in map {
+            let range = parse_expr(&mut exprs, &mut lex::Lexer::new(test.0));
+            for x in range {
+                assert_eq!(exprs[x], test.1[x]);
+            }
 
-        for (i, expr) in exprs.iter().enumerate() {
-            assert_eq!(*expr, expected[i]);
+            exprs.clear();
         }
+
+    //    let Stmt::VarAssign { name, expr } = &stmts[0];
+    //    assert_eq!(*name, "a");
+    //    assert_eq!(*expr, (0..expected.len()));
+    //
+    //    for (i, expr) in exprs.iter().enumerate() {
+    //        assert_eq!(*expr, expected[i]);
+    //    }
     }
 }
