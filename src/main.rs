@@ -1,6 +1,7 @@
 mod lexer;
 mod parser;
 mod codegen;
+mod dp;
 
 use std::process::exit;
 use std::io::prelude::*;
