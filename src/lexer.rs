@@ -128,28 +128,62 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-#[test]
-fn test_lexer() {
-    let source = "num1 = 324;\n\t    num2 =    345;\n\n\nnum3=4;";
-    let lexer = Lexer::new(source);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let expected = [
-        "num1",
-        "=",
-        "324",
-        ";",
-        "num2",
-        "=",
-        "345",
-        ";",
-        "num3",
-        "=",
-        "4",
-        ";",
-        "\"Hello world\"",
-    ];
+    const SOURCE: &str = "
+        num1 = 324;\n\t\
+        num2 =    345;\
+        \n\n\nnum3=4;\n\
+        str = \"Hello world\";
+    ";
 
-    for (i, x) in lexer.enumerate() {
-        assert_eq!(expected[i], x.data);
+    #[test]
+    fn test_next() {
+        let lexer = Lexer::new(SOURCE);
+        let expected = [
+            ("num1",            TokenKind::Name),
+            ("=",               TokenKind::Eq),
+            ("324",             TokenKind::Num),
+            (";",               TokenKind::Semicolon),
+            ("num2",            TokenKind::Name),
+            ("=",               TokenKind::Eq),
+            ("345",             TokenKind::Num),
+            (";",               TokenKind::Semicolon),
+            ("num3",            TokenKind::Name),
+            ("=",               TokenKind::Eq),
+            ("4",               TokenKind::Num),
+            (";",               TokenKind::Semicolon),
+            ("str",             TokenKind::Name),
+            ("=",               TokenKind::Eq),
+            ("\"Hello world\"", TokenKind::StrLit),
+            (";",               TokenKind::Semicolon)
+        ];
+
+        for (i, x) in lexer.enumerate() {
+            assert_eq!(expected[i].0, x.data);
+            assert_eq!(expected[i].1, x.kind);
+        }
+    }
+
+    #[test]
+    fn test_peek() {
+        let mut lexer = Lexer::new(SOURCE);
+
+        let t = lexer.peek().unwrap();
+        assert_eq!(t.data, "num1");
+        assert_eq!(t.kind, TokenKind::Name);
+
+        let t = lexer.next().unwrap();
+        assert_eq!(t.data, "num1");
+        assert_eq!(t.kind, TokenKind::Name);
+    }
+
+    #[test]
+    fn test_next_with_one_token() { 
+        let source = "adsf";
+        let mut lexer = Lexer::new(source);
+        assert!(matches!(lexer.next(), Some(_)));
     }
 }
