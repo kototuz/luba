@@ -7,19 +7,15 @@ pub enum Stmt<'a> {
     VarAssign { name: &'a str, expr: Range<usize> }
 }
 
-#[derive(Debug,  Clone, PartialEq)]
-pub enum OpKind {
-    Sub,
-    Add,
-    Mul,
-    Div,
-}
-
 #[derive(Debug, PartialEq)]
 pub enum Expr<'a> {
     Var(&'a str),
     Num(i32),
-    Op(OpKind)
+
+    OpSub,
+    OpAdd,
+    OpMul,
+    OpDiv
 }
 
 
@@ -76,10 +72,10 @@ fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Ran
     expr_buf.push(expect_read(lex));
 
     let mut prev_op = match lex.expect_peek().kind {
-        TokenKind::Plus  => OpKind::Add,
-        TokenKind::Minus => OpKind::Sub,
-        TokenKind::Star  => OpKind::Mul,
-        TokenKind::Slash => OpKind::Div,
+        TokenKind::Plus  => Expr::OpAdd,
+        TokenKind::Minus => Expr::OpSub,
+        TokenKind::Star  => Expr::OpMul,
+        TokenKind::Slash => Expr::OpDiv,
         _ => {
             ret.end = expr_buf.len();
             return ret;
@@ -101,31 +97,31 @@ fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Ran
         prev_op = match lex.expect_peek().kind {
             TokenKind::Plus  => {
                 let _ = lex.next();
-                expr_buf.push(Expr::Op(prev_op));
-                OpKind::Add
+                expr_buf.push(prev_op);
+                Expr::OpAdd
             },
             TokenKind::Star  => {
                 let _ = lex.next();
-                if prev_op != OpKind::Div {
+                if prev_op != Expr::OpDiv {
                     expr_buf.push(expect_read(lex));
-                    expr_buf.push(Expr::Op(OpKind::Mul));
+                    expr_buf.push(Expr::OpMul);
                     continue;
                 }
-                expr_buf.push(Expr::Op(prev_op));
-                OpKind::Mul
+                expr_buf.push(prev_op);
+                Expr::OpMul
             },
             TokenKind::Slash => {
                 let _ = lex.next();
-                if prev_op != OpKind::Mul {
+                if prev_op != Expr::OpMul {
                     expr_buf.push(expect_read(lex));
-                    expr_buf.push(Expr::Op(OpKind::Div));
+                    expr_buf.push(Expr::OpDiv);
                     continue;
                 }
-                expr_buf.push(Expr::Op(prev_op));
-                OpKind::Div
+                expr_buf.push(prev_op);
+                Expr::OpDiv
             },
             _  => {
-                expr_buf.push(Expr::Op(prev_op));
+                expr_buf.push(prev_op);
                 ret.end = expr_buf.len();
                 return ret;
             }
@@ -157,16 +153,16 @@ mod tests {
         // 1 / 2 * 3 * 4  =>   12/ 34**
         // 1 / 2 * 3 / 4  =>   12/ 3* 4/
         let map: &[(&str, &[Expr])] = &[
-            ("1 + 2;",         &[Num(1), Num(2), Op(OpKind::Add)]),
-            ("1 + 2 + 3;",     &[Num(1), Num(2), Op(OpKind::Add), Num(3), Op(OpKind::Add)]),
-            ("1 + 2*3;",       &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Op(OpKind::Add)]),
-            ("1 * 2 * 3;",     &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Op(OpKind::Mul)]),
-            ("1 + 2*3*4;",     &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Num(4), Op(OpKind::Mul), Op(OpKind::Add)]),
-            ("1 + 2*3*4 + 5;", &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Num(4), Op(OpKind::Mul), Op(OpKind::Add), Num(5), Op(OpKind::Add)]),
-            ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), Op(OpKind::Mul), Op(OpKind::Add), Num(4), Num(5), Op(OpKind::Mul), Op(OpKind::Add)]),
-            ("1 / 2 * 3;",     &[Num(1), Num(2), Op(OpKind::Div), Num(3), Op(OpKind::Mul)]),
-            ("1 / 2 * 3 * 4;", &[Num(1), Num(2), Op(OpKind::Div), Num(3), Num(4), Op(OpKind::Mul), Op(OpKind::Mul)]),
-            ("1 / 2 * 3 / 4;", &[Num(1), Num(2), Op(OpKind::Div), Num(3), Op(OpKind::Mul), Num(4), Op(OpKind::Div)])
+            ("1 + 2;",         &[Num(1), Num(2), OpAdd]),
+            ("1 + 2 + 3;",     &[Num(1), Num(2), OpAdd, Num(3), OpAdd]),
+            ("1 + 2*3;",       &[Num(1), Num(2), Num(3), OpMul, OpAdd]),
+            ("1 * 2 * 3;",     &[Num(1), Num(2), Num(3), OpMul, OpMul]),
+            ("1 + 2*3*4;",     &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd]),
+            ("1 + 2*3*4 + 5;", &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd, Num(5), OpAdd]),
+            ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), OpMul, OpAdd, Num(4), Num(5), OpMul, OpAdd]),
+            ("1 / 2 * 3;",     &[Num(1), Num(2), OpDiv, Num(3), OpMul]),
+            ("1 / 2 * 3 * 4;", &[Num(1), Num(2), OpDiv, Num(3), Num(4), OpMul, OpMul]),
+            ("1 / 2 * 3 / 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpDiv])
         ];
 
         let mut exprs: Vec<Expr> = Vec::new();
