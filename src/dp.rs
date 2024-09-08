@@ -47,7 +47,7 @@ impl Datapack {
         ret
     }
 
-    pub fn create_mcfn_file(&self, name: &str) -> fs::File {
+    pub fn create_fn_file(&self, name: &str) -> fs::File {
         let mut path = self.funcs_path.clone();
         path.push(name);
         fs::File::create(path.with_extension("mcfunction")).unwrap_or_else(|err| {
