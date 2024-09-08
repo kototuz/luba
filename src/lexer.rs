@@ -95,13 +95,19 @@ impl<'a> Iterator for LexerIterator<'a> {
             _    => {
                 if bytes[0].is_ascii_alphabetic() {
                     result.kind = TokenKind::Name;
-                    while bytes[result_len].is_ascii_alphanumeric() { result_len += 1; }
+                    while result_len < bytes.len() && bytes[result_len].is_ascii_alphanumeric() {
+                        result_len += 1;
+                    }
                 } else if bytes[0].is_ascii_digit() {
                     result.kind = TokenKind::Num;
-                    while bytes[result_len].is_ascii_digit() { result_len += 1; }
+                    while result_len < bytes.len() && bytes[result_len].is_ascii_digit(){
+                        result_len += 1;
+                    }
                 } else if bytes[0] == b'"' {
                     result.kind = TokenKind::StrLit;
-                    while bytes[result_len] != b'"' { result_len += 1 }
+                    while result_len < bytes.len() && bytes[result_len] != b'"' {
+                        result_len += 1
+                    }
                     result_len += 1;
                 } else {
                     eprintln!("ERROR: undefined token at `{}...`", &self.src[..5]);
