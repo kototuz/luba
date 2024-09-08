@@ -21,7 +21,7 @@ pub enum Expr<'a> {
 
 
 pub fn parse<'a>(lex: &mut lex::Lexer<'a>) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
-    use lex::*;
+    use self::lex::*;
 
     let mut expr_buf: Vec<Expr> = Vec::new();
     let mut stmt_buf: Vec<Stmt> = Vec::new();
@@ -42,7 +42,7 @@ pub fn parse<'a>(lex: &mut lex::Lexer<'a>) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
 }
 
 fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Range<usize> {
-    use lex::*;
+    use self::lex::*;
 
     fn parse_num(src: &str) -> i32 {
         src.parse::<i32>().unwrap_or_else(|err| {
