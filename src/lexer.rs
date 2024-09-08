@@ -122,31 +122,28 @@ impl<'a> fmt::Display for Token<'a> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_lexer_next_token() {
-        let source = "num1 = 324;\n\t    num2 =    345;\n\n\nnum3=4;";
-        let lexer = super::Lexer::new(source);
+#[test]
+fn test_lexer() {
+    let source = "num1 = 324;\n\t    num2 =    345;\n\n\nnum3=4;";
+    let lexer = Lexer::new(source);
 
-        let expected = [
-            "num1",
-            "=",
-            "324",
-            ";",
-            "num2",
-            "=",
-            "345",
-            ";",
-            "num3",
-            "=",
-            "4",
-            ";",
-            "\"Hello world\"",
-        ];
+    let expected = [
+        "num1",
+        "=",
+        "324",
+        ";",
+        "num2",
+        "=",
+        "345",
+        ";",
+        "num3",
+        "=",
+        "4",
+        ";",
+        "\"Hello world\"",
+    ];
 
-        for (i, x) in lexer.enumerate() {
-            assert_eq!(expected[i], x.data);
-        }
+    for (i, x) in lexer.enumerate() {
+        assert_eq!(expected[i], x.data);
     }
 }

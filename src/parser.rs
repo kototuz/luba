@@ -133,54 +133,47 @@ fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Ran
 
 
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[test]
+fn test_parse() {
+    // Syntax: v1;v2;op
+    // 1 + 2          =>   12+
+    // 1 + 2 + 3      =>   12+ 3 +
+    // 1 + 2*3        =>   1 23* +
+    // 1 * 2 * 3      =>   1 23* *
+    // 1 + 2*3*4      =>   1 23* 4* +
+    // 1 + 2*3*4 + 5  =>   1 23* 4* + 5+
+    // 1 + 2*3 + 4*5  =>   1 23* + 45* +
+    // 1 / 2 * 3      =>   12/ 3*
+    // 1 / 2 * 3 * 4  =>   12/ 34**
+    // 1 / 2 * 3 / 4  =>   12/ 3* 4/
+    use Expr::*;
+    let map: &[(&str, &[Expr])] = &[
+        ("1 + 2;",         &[Num(1), Num(2), OpAdd]),
+        ("1 + 2 + 3;",     &[Num(1), Num(2), OpAdd, Num(3), OpAdd]),
+        ("1 + 2*3;",       &[Num(1), Num(2), Num(3), OpMul, OpAdd]),
+        ("1 * 2 * 3;",     &[Num(1), Num(2), Num(3), OpMul, OpMul]),
+        ("1 + 2*3*4;",     &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd]),
+        ("1 + 2*3*4 + 5;", &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd, Num(5), OpAdd]),
+        ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), OpMul, OpAdd, Num(4), Num(5), OpMul, OpAdd]),
+        ("1 / 2 * 3;",     &[Num(1), Num(2), OpDiv, Num(3), OpMul]),
+        ("1 / 2 * 3 * 4;", &[Num(1), Num(2), OpDiv, Num(3), Num(4), OpMul, OpMul]),
+        ("1 / 2 * 3 / 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpDiv])
+    ];
 
-    #[test]
-    fn parse_test() {
-        use super::Expr::*;
-
-        // Syntax: v1;v2;op
-        // 1 + 2          =>   12+
-        // 1 + 2 + 3      =>   12+ 3 +
-        // 1 + 2*3        =>   1 23* +
-        // 1 * 2 * 3      =>   1 23* *
-        // 1 + 2*3*4      =>   1 23* 4* +
-        // 1 + 2*3*4 + 5  =>   1 23* 4* + 5+
-        // 1 + 2*3 + 4*5  =>   1 23* + 45* +
-        // 1 / 2 * 3      =>   12/ 3*
-        // 1 / 2 * 3 * 4  =>   12/ 34**
-        // 1 / 2 * 3 / 4  =>   12/ 3* 4/
-        let map: &[(&str, &[Expr])] = &[
-            ("1 + 2;",         &[Num(1), Num(2), OpAdd]),
-            ("1 + 2 + 3;",     &[Num(1), Num(2), OpAdd, Num(3), OpAdd]),
-            ("1 + 2*3;",       &[Num(1), Num(2), Num(3), OpMul, OpAdd]),
-            ("1 * 2 * 3;",     &[Num(1), Num(2), Num(3), OpMul, OpMul]),
-            ("1 + 2*3*4;",     &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd]),
-            ("1 + 2*3*4 + 5;", &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd, Num(5), OpAdd]),
-            ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), OpMul, OpAdd, Num(4), Num(5), OpMul, OpAdd]),
-            ("1 / 2 * 3;",     &[Num(1), Num(2), OpDiv, Num(3), OpMul]),
-            ("1 / 2 * 3 * 4;", &[Num(1), Num(2), OpDiv, Num(3), Num(4), OpMul, OpMul]),
-            ("1 / 2 * 3 / 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpDiv])
-        ];
-
-        let mut exprs: Vec<Expr> = Vec::new();
-        for test in map {
-            let range = parse_expr(&mut exprs, &mut lex::Lexer::new(test.0));
-            for x in range {
-                assert_eq!(exprs[x], test.1[x]);
-            }
-
-            exprs.clear();
+    let mut exprs: Vec<Expr> = Vec::new();
+    for test in map {
+        let range = parse_expr(&mut exprs, &mut lex::Lexer::new(test.0));
+        for x in range {
+            assert_eq!(exprs[x], test.1[x]);
         }
 
-    //    let Stmt::VarAssign { name, expr } = &stmts[0];
-    //    assert_eq!(*name, "a");
-    //    assert_eq!(*expr, (0..expected.len()));
-    //
-    //    for (i, expr) in exprs.iter().enumerate() {
-    //        assert_eq!(*expr, expected[i]);
-    //    }
+        exprs.clear();
     }
+//    let Stmt::VarAssign { name, expr } = &stmts[0];
+//    assert_eq!(*name, "a");
+//    assert_eq!(*expr, (0..expected.len()));
+//
+//    for (i, expr) in exprs.iter().enumerate() {
+//        assert_eq!(*expr, expected[i]);
+//    }
 }
