@@ -187,3 +187,5 @@ mod tests {
         assert!(matches!(lexer.next(), Some(_)));
     }
 }
+
+// TODO: better error reporting
