@@ -1,7 +1,6 @@
 mod lexer;
 mod parser;
 mod codegen;
-mod dp;
 
 use std::process::exit;
 use std::io::prelude::*;
@@ -23,11 +22,12 @@ fn main() {
         exit(1);
     });
 
-    use std::path::PathBuf;
-    let file_name = PathBuf::from(PathBuf::from(file_path).file_name().unwrap());
-    let file_name = file_name.file_stem().unwrap();
-
     let (mut exprs, mut stmts) = parser::parse(&mut lexer::Lexer::new(&buffer));
 
-    codegen::gen_dp(file_name.to_str().unwrap(), &mut exprs, &mut stmts);
+    let output_dir = std::env::current_dir().unwrap_or_else(|err| {
+        eprintln!("ERROR: could not get current dir: {err}");
+        exit(1);
+    });
+
+    codegen::gen_dp(output_dir.as_path(), &mut exprs, &mut stmts);
 }
