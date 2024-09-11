@@ -60,73 +60,74 @@ fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Ran
         }
     }
 
-    // 1 + 1     => 11+
-    // 1 + 1 + 1 => 11+ 1+ 1+ 1+ 1+ 1+
-    // 1 - 1 - 1 => 11- 1-
-    // 1 + 1 * 1 => 1 11* +
-    // 1 + 1 / 1 => 1 11/ +
+    //fn skip_open_parens(lex: &mut Lexer) -> bool {
+    //    let mut ret = false;
+    //    if lex.expect_peek().kind == TokenKind::OpenParen {
+    //        ret = true;
+    //    }
+    //
+    //    let _ = lex.next().unwrap();
+    //    while lex.expect_peek().kind == TokenKind::OpenParen {
+    //        let _ = lex.next().unwrap();
+    //    }
+    //    let _ = lex.next().unwrap();
+    //
+    //    ret
+    //}
 
+    // 1 + 2 * 3 => 1 23* +
+    // 1 * 2 + 3 => 12* 3 +
+    // 1 * 2 * 3 => 1 23* *
+    // 1 + 2 * 3 * 4 => 1 23* 4* 5* 6*
+    // 1 + 2 * 3 + 2 => 1 23*+ 2
+    // 1 + 2 / 3 * 4 => 123/ 4*+
+    // 1 / 2 * 3 * 4 * 5 => 12/34*5*
+    // 1 / 2 / 3 * 4 / 5 => 1 23/ /4*5/
     let mut ret = Range { start: expr_buf.len(), end: 0 };
-
-    expr_buf.push(expect_read(lex));
-
-    let mut prev_op = match lex.expect_peek().kind {
-        TokenKind::Plus  => Expr::OpAdd,
-        TokenKind::Minus => Expr::OpSub,
-        TokenKind::Star  => Expr::OpMul,
-        TokenKind::Slash => Expr::OpDiv,
-        _ => {
-            ret.end = expr_buf.len();
-            return ret;
-        }
-    };
-    let _ = lex.next();
-
     expr_buf.push(expect_read(lex));
     loop {
-        // 1 + 2 * 3 => 1 23* +
-        // 1 * 2 + 3 => 12* 3 +
-        // 1 * 2 * 3 => 1 23* *
-        // 1 + 2 * 3 * 4 => 1 23* 4* 5* 6*
-        // 1 + 2 * 3 + 2 => 1 23*+ 2
-        // 1 + 2 / 3 * 4 => 123/ 4*+
-        // 1 / 2 * 3 * 4 * 5 => 12/34*5*
-        // 1 / 2 / 3 * 4 / 5 => 1 23/ /4*5/
-
-        prev_op = match lex.expect_peek().kind {
+        match lex.expect_peek().kind {
             TokenKind::Plus  => {
                 let _ = lex.next();
-                expr_buf.push(prev_op);
-                Expr::OpAdd
+                expr_buf.push(expect_read(lex));
+                expr_buf.push(Expr::OpAdd);
+            },
+            TokenKind::Minus => {
+                let _ = lex.next();
+                expr_buf.push(expect_read(lex));
+                expr_buf.push(Expr::OpAdd);
             },
             TokenKind::Star  => {
                 let _ = lex.next();
-                if prev_op != Expr::OpDiv {
-                    expr_buf.push(expect_read(lex));
-                    expr_buf.push(Expr::OpMul);
-                    continue;
+                match expr_buf.last() {
+                    Some(Expr::OpAdd | Expr::OpSub) => {
+                        expr_buf.insert(expr_buf.len()-1, expect_read(lex));
+                        expr_buf.insert(expr_buf.len()-1, Expr::OpMul);
+                    },
+                    _ => {
+                        expr_buf.push(expect_read(lex));
+                        expr_buf.push(Expr::OpMul);
+                    }
                 }
-                expr_buf.push(prev_op);
-                Expr::OpMul
             },
             TokenKind::Slash => {
                 let _ = lex.next();
-                if prev_op != Expr::OpMul {
-                    expr_buf.push(expect_read(lex));
-                    expr_buf.push(Expr::OpDiv);
-                    continue;
+                match expr_buf.last() {
+                    Some(Expr::OpAdd | Expr::OpSub) => {
+                        expr_buf.insert(expr_buf.len()-1, expect_read(lex));
+                        expr_buf.insert(expr_buf.len()-1, Expr::OpDiv);
+                    },
+                    _ => {
+                        expr_buf.push(expect_read(lex));
+                        expr_buf.push(Expr::OpDiv);
+                    }
                 }
-                expr_buf.push(prev_op);
-                Expr::OpDiv
             },
             _  => {
-                expr_buf.push(prev_op);
                 ret.end = expr_buf.len();
                 return ret;
             }
-        };
-
-        expr_buf.push(expect_read(lex));
+        }
     }
 }
 
@@ -155,18 +156,19 @@ mod tests {
             ("1 + 2;",         &[Num(1), Num(2), OpAdd]),
             ("1 + 2 + 3;",     &[Num(1), Num(2), OpAdd, Num(3), OpAdd]),
             ("1 + 2*3;",       &[Num(1), Num(2), Num(3), OpMul, OpAdd]),
-            ("1 * 2 * 3;",     &[Num(1), Num(2), Num(3), OpMul, OpMul]),
+            ("1 * 2 * 3;",     &[Num(1), Num(2), OpMul, Num(3), OpMul]),
             ("1 + 2*3*4;",     &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd]),
             ("1 + 2*3*4 + 5;", &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd, Num(5), OpAdd]),
             ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), OpMul, OpAdd, Num(4), Num(5), OpMul, OpAdd]),
             ("1 / 2 * 3;",     &[Num(1), Num(2), OpDiv, Num(3), OpMul]),
-            ("1 / 2 * 3 * 4;", &[Num(1), Num(2), OpDiv, Num(3), Num(4), OpMul, OpMul]),
+            ("1 / 2 * 3 * 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpMul]),
             ("1 / 2 * 3 / 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpDiv])
         ];
 
         let mut exprs: Vec<Expr> = Vec::new();
         for test in map {
             let range = parse_expr(&mut exprs, &mut lex::Lexer::new(test.0));
+            dbg!("{}", &exprs);
             for x in range {
                 assert_eq!(exprs[x], test.1[x]);
             }
