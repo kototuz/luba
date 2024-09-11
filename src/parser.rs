@@ -1,5 +1,5 @@
 use crate::lexer as lex;
-use std::process;
+use std::process::exit;
 use std::ops::Range;
 
 #[derive(Debug)]
@@ -45,19 +45,17 @@ pub fn parse<'a>(lex: &mut lex::Lexer<'a>) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
 fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Range<usize> {
     use self::lex::*;
 
-    fn parse_num(src: &str) -> i32 {
-        src.parse::<i32>().unwrap_or_else(|err| {
-            eprintln!("ERROR: parser: could not parse num `{src}`: {err}");
-            process::exit(1);
-        })
-    }
-
     // TODO: make seperate function for lexer. Something like `expect_oneof_next()`
     fn expect_read<'a>(lex: &mut Lexer<'a>) -> Expr<'a> {
         let tok = lex.expect_next();
         match tok.kind {
             TokenKind::Name => Expr::Var(tok.data),
-            TokenKind::Num  => Expr::Num(parse_num(tok.data)),
+            TokenKind::Num  => Expr::Num(
+                tok.data.parse::<i32>().unwrap_or_else(|err| {
+                    eprintln!("ERROR: could not parse `{}`: {err}", tok.data);
+                    exit(1);
+                })
+            ),
             _ => unreachable!()
         }
     }
