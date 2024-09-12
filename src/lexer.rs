@@ -20,7 +20,9 @@ pub enum TokenKind {
     Minus,
     Slash,
     Star,
-    Semicolon
+    Semicolon,
+    OpenParen,
+    CloseParen,
 }
 
 #[derive(Debug)]
@@ -92,6 +94,8 @@ impl<'a> Iterator for LexerIterator<'a> {
             b'*' => result.kind = TokenKind::Star,
             b'/' => result.kind = TokenKind::Slash,
             b';' => result.kind = TokenKind::Semicolon,
+            b'(' => result.kind = TokenKind::OpenParen,
+            b')' => result.kind = TokenKind::CloseParen,
             _    => {
                 if bytes[0].is_ascii_alphabetic() {
                     result.kind = TokenKind::Name;

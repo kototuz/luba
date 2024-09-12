@@ -119,6 +119,7 @@ pub fn gen_dp<'a>(
                                 ).as_bytes()
                             );
                         },
+                        _ => unreachable!()
                     }
                 }
 

@@ -9,13 +9,15 @@ pub enum Stmt<'a> {
 
 #[derive(Debug, PartialEq)]
 pub enum Expr<'a> {
-    Var(&'a str),
-    Num(i32),
-
     OpSub,
     OpAdd,
     OpMul,
-    OpDiv
+    OpDiv,
+
+    LParen,
+
+    Var(&'a str),
+    Num(i32),
 }
 
 
@@ -41,93 +43,76 @@ pub fn parse<'a>(lex: &mut lex::Lexer<'a>) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
     }
 }
 
-// TODO: support for `()`
 fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Range<usize> {
+    // the implementation based on: https://en.wikipedia.org/wiki/Shunting_yard_algorithm
     use self::lex::*;
 
-    // TODO: make seperate function for lexer. Something like `expect_oneof_next()`
-    fn expect_read<'a>(lex: &mut Lexer<'a>) -> Expr<'a> {
-        let tok = lex.expect_next();
-        match tok.kind {
-            TokenKind::Name => Expr::Var(tok.data),
-            TokenKind::Num  => Expr::Num(
-                tok.data.parse::<i32>().unwrap_or_else(|err| {
-                    eprintln!("ERROR: could not parse `{}`: {err}", tok.data);
-                    exit(1);
-                })
-            ),
-            _ => unreachable!()
-        }
-    }
-
-    //fn skip_open_parens(lex: &mut Lexer) -> bool {
-    //    let mut ret = false;
-    //    if lex.expect_peek().kind == TokenKind::OpenParen {
-    //        ret = true;
-    //    }
-    //
-    //    let _ = lex.next().unwrap();
-    //    while lex.expect_peek().kind == TokenKind::OpenParen {
-    //        let _ = lex.next().unwrap();
-    //    }
-    //    let _ = lex.next().unwrap();
-    //
-    //    ret
-    //}
-
-    // 1 + 2 * 3 => 1 23* +
-    // 1 * 2 + 3 => 12* 3 +
-    // 1 * 2 * 3 => 1 23* *
-    // 1 + 2 * 3 * 4 => 1 23* 4* 5* 6*
-    // 1 + 2 * 3 + 2 => 1 23*+ 2
-    // 1 + 2 / 3 * 4 => 123/ 4*+
-    // 1 / 2 * 3 * 4 * 5 => 12/34*5*
-    // 1 / 2 / 3 * 4 / 5 => 1 23/ /4*5/
     let mut ret = Range { start: expr_buf.len(), end: 0 };
-    expr_buf.push(expect_read(lex));
+    let mut op_stack: Vec<Expr> = Vec::new();
     loop {
-        match lex.expect_peek().kind {
-            TokenKind::Plus  => {
-                let _ = lex.next();
-                expr_buf.push(expect_read(lex));
-                expr_buf.push(Expr::OpAdd);
+        let tok = lex.expect_peek();
+        match tok.kind {
+            TokenKind::Name => expr_buf.push(Expr::Var(tok.data)),
+            TokenKind::Num  => expr_buf.push(Expr::Num(tok.data.parse::<i32>().unwrap())),
+
+            TokenKind::Plus => {
+                while let Some(op) = op_stack.last() {
+                    if *op == Expr::LParen { break; }
+                    expr_buf.push(op_stack.pop().unwrap());
+                }
+                op_stack.push(Expr::OpAdd);
             },
+
             TokenKind::Minus => {
-                let _ = lex.next();
-                expr_buf.push(expect_read(lex));
-                expr_buf.push(Expr::OpAdd);
+                while let Some(op) = op_stack.last() {
+                    if *op == Expr::LParen { break; }
+                    expr_buf.push(op_stack.pop().unwrap());
+                }
+                op_stack.push(Expr::OpSub);
             },
-            TokenKind::Star  => {
-                let _ = lex.next();
-                match expr_buf.last() {
-                    Some(Expr::OpAdd | Expr::OpSub) => {
-                        expr_buf.insert(expr_buf.len()-1, expect_read(lex));
-                        expr_buf.insert(expr_buf.len()-1, Expr::OpMul);
-                    },
-                    _ => {
-                        expr_buf.push(expect_read(lex));
-                        expr_buf.push(Expr::OpMul);
+
+            TokenKind::Star => {
+                while let Some(op) = op_stack.last() {
+                    match op {
+                        Expr::OpMul | Expr::OpDiv => {
+                            expr_buf.push(op_stack.pop().unwrap());
+                        },
+                        _ => break
                     }
                 }
+                op_stack.push(Expr::OpMul);
             },
+
             TokenKind::Slash => {
-                let _ = lex.next();
-                match expr_buf.last() {
-                    Some(Expr::OpAdd | Expr::OpSub) => {
-                        expr_buf.insert(expr_buf.len()-1, expect_read(lex));
-                        expr_buf.insert(expr_buf.len()-1, Expr::OpDiv);
-                    },
-                    _ => {
-                        expr_buf.push(expect_read(lex));
-                        expr_buf.push(Expr::OpDiv);
+                while let Some(op) = op_stack.last() {
+                    match op {
+                        Expr::OpMul | Expr::OpDiv => {
+                            expr_buf.push(op_stack.pop().unwrap());
+                        },
+                        _ => break
                     }
                 }
+                op_stack.push(Expr::OpDiv);
             },
-            _  => {
+
+            TokenKind::OpenParen  => op_stack.push(Expr::LParen),
+            TokenKind::CloseParen => {
+                while let Some(op) = op_stack.last() {
+                    if *op == Expr::LParen { break; }
+                    expr_buf.push(op_stack.pop().unwrap());
+                }
+                let _ = op_stack.pop();
+            },
+
+            _ => {
+                op_stack.reverse();
+                expr_buf.append(&mut op_stack);
                 ret.end = expr_buf.len();
                 return ret;
             }
         }
+
+        let _ = lex.next().expect("must be");
     }
 }
 
@@ -162,7 +147,10 @@ mod tests {
             ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), OpMul, OpAdd, Num(4), Num(5), OpMul, OpAdd]),
             ("1 / 2 * 3;",     &[Num(1), Num(2), OpDiv, Num(3), OpMul]),
             ("1 / 2 * 3 * 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpMul]),
-            ("1 / 2 * 3 / 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpDiv])
+            ("1 / 2 * 3 / 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpDiv]),
+            ("1 * (2 + 3);",   &[Num(1), Num(2), Num(3), OpAdd, OpMul]),
+            ("1 * (2 + 3) + 2;",   &[Num(1), Num(2), Num(3), OpAdd, OpMul, Num(2), OpAdd]),
+            ("3 + 4 * 2 / (1 - 5);", &[Num(3), Num(4), Num(2), OpMul, Num(1), Num(5), OpSub, OpDiv, OpAdd])
         ];
 
         let mut exprs: Vec<Expr> = Vec::new();
