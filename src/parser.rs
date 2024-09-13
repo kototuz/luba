@@ -1,5 +1,4 @@
 use crate::lexer as lex;
-use std::process::exit;
 use std::ops::Range;
 
 #[derive(Debug)]
@@ -22,20 +21,20 @@ pub enum Expr<'a> {
 
 
 
-pub fn parse<'a>(lex: &mut lex::Lexer<'a>) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
+pub fn parse<'a>(lex: &mut lex::Lexer<'a>, file_src: &'a [u8]) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
     use self::lex::*;
 
     let mut expr_buf: Vec<Expr> = Vec::new();
     let mut stmt_buf: Vec<Stmt> = Vec::new();
 
     loop {
-        if let Some(tok) = lex.next() {
+        if let Some(tok) = lex.next(file_src, ) {
             match tok.kind {
                 TokenKind::Name => {
-                    let _ = lex.expect_specific_next(TokenKind::Eq);
-                    let expr = parse_expr(&mut expr_buf, lex);
-                    stmt_buf.push(Stmt::VarAssign { name: tok.data, expr });
-                    let _ = lex.expect_specific_next(TokenKind::Semicolon);
+                    let _ = lex.expect_spec_next(file_src, TokenKind::Eq);
+                    let expr = parse_expr(&mut expr_buf, lex, file_src);
+                    stmt_buf.push(Stmt::VarAssign { name: tok.text, expr });
+                    let _ = lex.expect_spec_next(file_src, TokenKind::Semicolon);
                 },
                 _ => todo!("now only variable assign stmt is avilable")
             }
@@ -43,17 +42,21 @@ pub fn parse<'a>(lex: &mut lex::Lexer<'a>) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
     }
 }
 
-fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Range<usize> {
+fn parse_expr<'a>(
+    expr_buf: &mut Vec<Expr<'a>>,
+    lex: &mut lex::Lexer<'a>,
+    file_src: &'a [u8]
+) -> Range<usize> {
     // the implementation based on: https://en.wikipedia.org/wiki/Shunting_yard_algorithm
     use self::lex::*;
 
     let mut ret = Range { start: expr_buf.len(), end: 0 };
     let mut op_stack: Vec<Expr> = Vec::new();
     loop {
-        let tok = lex.expect_peek();
+        let tok = lex.expect_peek(file_src);
         match tok.kind {
-            TokenKind::Name => expr_buf.push(Expr::Var(tok.data)),
-            TokenKind::Num  => expr_buf.push(Expr::Num(tok.data.parse::<i32>().unwrap())),
+            TokenKind::Name => expr_buf.push(Expr::Var(tok.text)),
+            TokenKind::Num  => expr_buf.push(Expr::Num(tok.text.parse::<i32>().unwrap())),
 
             TokenKind::Plus => {
                 while let Some(op) = op_stack.last() {
@@ -112,7 +115,7 @@ fn parse_expr<'a>(expr_buf: &mut Vec<Expr<'a>>, lex: &mut lex::Lexer<'a>) -> Ran
             }
         }
 
-        let _ = lex.next().expect("must be");
+        let _ = lex.next(file_src).expect("must be");
     }
 }
 
@@ -155,8 +158,7 @@ mod tests {
 
         let mut exprs: Vec<Expr> = Vec::new();
         for test in map {
-            let range = parse_expr(&mut exprs, &mut lex::Lexer::new(test.0));
-            dbg!("{}", &exprs);
+            let range = parse_expr(&mut exprs, &mut lex::Lexer::new(), test.0.as_bytes());
             for x in range {
                 assert_eq!(exprs[x], test.1[x]);
             }
@@ -168,7 +170,7 @@ mod tests {
     #[test]
     fn test_parse_stmt() {
         let source = "a = 10;";
-        let (_, stmts) = parse(&mut lex::Lexer::new(source));
+        let (_, stmts) = parse(&mut lex::Lexer::new(), source.as_bytes());
         assert_eq!(stmts.len(), 1);
         let Stmt::VarAssign { name, .. } = &stmts[0];
         assert_eq!(*name, "a");

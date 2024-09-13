@@ -22,7 +22,7 @@ fn main() {
         exit(1);
     });
 
-    let (mut exprs, mut stmts) = parser::parse(&mut lexer::Lexer::new(&buffer));
+    let (mut exprs, mut stmts) = parser::parse(&mut lexer::Lexer::new(), buffer.as_bytes());
 
     let output_dir = std::env::current_dir().unwrap_or_else(|err| {
         eprintln!("ERROR: could not get current dir: {err}");
