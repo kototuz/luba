@@ -34,10 +34,10 @@ pub fn parse<'a>(source: &'a [u8]) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
             TokenKind::Name => {
                 let _ = lex.next(source);
 
-                let _ = lex.expect_next_eq(source, TokenKind::Eq);
+                let _ = lex.expect_next(source, TokenKind::Eq);
                 let expr = parse_expr(&mut expr_buf, &mut lex, source);
                 stmt_buf.push(Stmt::VarAssign { name: tok.text, expr });
-                let _ = lex.expect_next_eq(source, TokenKind::Semicolon);
+                let _ = lex.expect_next(source, TokenKind::Semicolon);
             },
             _ => {
                 eprintln!("ERROR:{}: undefined statement", lex.loc);

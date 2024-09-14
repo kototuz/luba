@@ -114,16 +114,6 @@ impl<'a> Lexer<'a> {
         } else { None }
     }
 
-    pub fn expect_next(&mut self, src: &'a [u8]) -> Token<'a> {
-        self.next(src).unwrap_or_else(|| {
-            eprintln!(
-                "ERROR:{}: token was expected but it did not appear",
-                self.loc
-            );
-            exit(1);
-        })
-    }
-
     pub fn expect_peek(&mut self, src: &'a [u8]) -> Token<'a> {
         self.peek(src).unwrap_or_else(|| {
             eprintln!(
@@ -158,7 +148,7 @@ impl<'a> Lexer<'a> {
         exit(1);
     }
 
-    pub fn expect_next_eq(&mut self, src: &'a [u8], exp_tk: TokenKind) -> Token<'a> {
+    pub fn expect_next(&mut self, src: &'a [u8], exp_tk: TokenKind) -> Token<'a> {
         let ret = self.peek(src).unwrap_or_else(|| {
             eprintln!(
                 "ERROR:{}: token `{}` was expected, but it did not appear",
