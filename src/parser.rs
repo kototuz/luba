@@ -1,5 +1,6 @@
 use crate::lexer as lex;
 use std::ops::Range;
+use std::process::exit;
 
 #[derive(Debug)]
 pub enum Stmt<'a> {
@@ -21,42 +22,72 @@ pub enum Expr<'a> {
 
 
 
-pub fn parse<'a>(lex: &mut lex::Lexer<'a>, file_src: &'a [u8]) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
+pub fn parse<'a>(source: &'a [u8]) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
     use self::lex::*;
 
     let mut expr_buf: Vec<Expr> = Vec::new();
     let mut stmt_buf: Vec<Stmt> = Vec::new();
+    let mut lex = Lexer::new();
 
-    loop {
-        if let Some(tok) = lex.next(file_src, ) {
-            match tok.kind {
-                TokenKind::Name => {
-                    let _ = lex.expect_spec_next(file_src, TokenKind::Eq);
-                    let expr = parse_expr(&mut expr_buf, lex, file_src);
-                    stmt_buf.push(Stmt::VarAssign { name: tok.text, expr });
-                    let _ = lex.expect_spec_next(file_src, TokenKind::Semicolon);
-                },
-                _ => todo!("now only variable assign stmt is avilable")
+    while let Some(tok) = lex.peek(source) {
+        match tok.kind {
+            TokenKind::Name => {
+                let _ = lex.next(source);
+
+                let _ = lex.expect_next_eq(source, TokenKind::Eq);
+                let expr = parse_expr(&mut expr_buf, &mut lex, source);
+                stmt_buf.push(Stmt::VarAssign { name: tok.text, expr });
+                let _ = lex.expect_next_eq(source, TokenKind::Semicolon);
+            },
+            _ => {
+                eprintln!("ERROR:{}: undefined statement", lex.loc);
+                exit(1);
             }
-        } else { return (expr_buf, stmt_buf); }
+        }
     }
+
+    (expr_buf, stmt_buf) 
 }
 
 fn parse_expr<'a>(
     expr_buf: &mut Vec<Expr<'a>>,
     lex: &mut lex::Lexer<'a>,
-    file_src: &'a [u8]
+    source: &'a [u8]
 ) -> Range<usize> {
     // the implementation based on: https://en.wikipedia.org/wiki/Shunting_yard_algorithm
     use self::lex::*;
 
+    let mut tok: Token;
     let mut ret = Range { start: expr_buf.len(), end: 0 };
     let mut op_stack: Vec<Expr> = Vec::new();
+
+    let read_tks = &[TokenKind::Name, TokenKind::Num, TokenKind::OpenParen];
+
     loop {
-        let tok = lex.expect_peek(file_src);
+        tok = lex.expect_next_oneof(source, read_tks);
         match tok.kind {
-            TokenKind::Name => expr_buf.push(Expr::Var(tok.text)),
-            TokenKind::Num  => expr_buf.push(Expr::Num(tok.text.parse::<i32>().unwrap())),
+            TokenKind::Name => { expr_buf.push(Expr::Var(tok.text)); break; },
+            TokenKind::Num  => { expr_buf.push(Expr::Num(tok.text.parse::<i32>().unwrap())); break; },
+            TokenKind::OpenParen => op_stack.push(Expr::LParen),
+            _ => unreachable!()
+        }
+    }
+
+    loop {
+        tok = lex.expect_peek(source);
+        match tok.kind {
+            TokenKind::CloseParen => {
+                while op_stack.last() != Some(&Expr::LParen) {
+                    expr_buf.push(op_stack.pop().unwrap());
+                    if op_stack.is_empty() {
+                        eprintln!("ERROR:{}: mismatched parentheses", lex.loc);
+                        exit(1);
+                    }
+                }
+                let _ = op_stack.pop();
+                let _ = lex.next(source);
+                continue;
+            },
 
             TokenKind::Plus => {
                 while let Some(op) = op_stack.last() {
@@ -98,24 +129,31 @@ fn parse_expr<'a>(
                 op_stack.push(Expr::OpDiv);
             },
 
-            TokenKind::OpenParen  => op_stack.push(Expr::LParen),
-            TokenKind::CloseParen => {
-                while let Some(op) = op_stack.last() {
-                    if *op == Expr::LParen { break; }
-                    expr_buf.push(op_stack.pop().unwrap());
-                }
-                let _ = op_stack.pop();
-            },
-
             _ => {
                 op_stack.reverse();
+                for op in &op_stack {
+                    if *op == Expr::LParen {
+                        eprintln!("ERROR:{}: mismatched parentheses", lex.loc);
+                        exit(1);
+                    }
+                }
+
                 expr_buf.append(&mut op_stack);
                 ret.end = expr_buf.len();
                 return ret;
             }
         }
 
-        let _ = lex.next(file_src).expect("must be");
+        let _ = lex.next(source);
+        loop {
+            tok = lex.expect_next_oneof(source, read_tks);
+            match tok.kind {
+                TokenKind::Name => { expr_buf.push(Expr::Var(tok.text)); break; },
+                TokenKind::Num  => { expr_buf.push(Expr::Num(tok.text.parse::<i32>().unwrap())); break; },
+                TokenKind::OpenParen => op_stack.push(Expr::LParen),
+                _ => unreachable!()
+            }
+        }
     }
 }
 
@@ -170,7 +208,7 @@ mod tests {
     #[test]
     fn test_parse_stmt() {
         let source = "a = 10;";
-        let (_, stmts) = parse(&mut lex::Lexer::new(), source.as_bytes());
+        let (_, stmts) = parse(source.as_bytes());
         assert_eq!(stmts.len(), 1);
         let Stmt::VarAssign { name, .. } = &stmts[0];
         assert_eq!(*name, "a");

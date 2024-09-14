@@ -151,9 +151,9 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        eprint!("ERROR:{}: one of ", self.loc);
+        eprint!("ERROR:{}: one of the [ ", self.loc);
         for tk in exp_tks { eprint!("`{tk}` "); }
-        eprint!("was expected, but found `{}`\n", ret.kind);
+        eprint!("] was expected, but found `{}`\n", ret.kind);
 
         exit(1);
     }
