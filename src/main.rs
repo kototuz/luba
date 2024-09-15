@@ -5,6 +5,8 @@ mod codegen;
 use std::process::exit;
 use std::io::prelude::*;
 
+type Result<T> = std::result::Result<T, ()>;
+
 fn main() {
     let file_path = std::env::args().nth(1).unwrap_or_else(|| {
         eprintln!("ERROR: source file must be provided");
@@ -29,5 +31,5 @@ fn main() {
         exit(1);
     });
 
-    codegen::gen_code(output_dir.as_path(), &syntax);
+    let _ = codegen::gen_code(output_dir.as_path(), &syntax);
 }

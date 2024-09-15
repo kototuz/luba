@@ -1,15 +1,10 @@
 use crate::parser;
+use super::Result;
+
 use std::io::prelude::*;
 use std::process::exit;
 use std::path::Path;
 use std::fs::File;
-
-fn write_file(file: &mut File, text: &[u8]) {
-    let _ = file.write_all(text).inspect_err(|err| {
-        eprintln!("ERROR: could not write file: {err}");
-        exit(1);
-    });
-}
 
 fn create_mcfn_file(dir: &Path, name: &str) -> File {
     File::create(dir.join(name).with_extension("mcfunction")).unwrap_or_else(|err| {
@@ -23,19 +18,23 @@ fn create_main(dir: &Path) -> File {
 
     { // generate pre-main
       // TODO: for math operations consider using `minecraft storage`
-        write_file(&mut main_file, b"scoreboard objectives add reg0 dummy\n");
-        write_file(&mut main_file, b"scoreboard objectives add reg1 dummy\n");
-        write_file(&mut main_file, b"scoreboard objectives add reg2 dummy\n");
-        write_file(&mut main_file, b"scoreboard objectives add reg3 dummy\n");
+        let _ = writeln!(&mut main_file, "scoreboard objectives add reg0 dummy").map_err(write_err);
+        let _ = writeln!(&mut main_file, "scoreboard objectives add reg1 dummy").map_err(write_err);
+        let _ = writeln!(&mut main_file, "scoreboard objectives add reg2 dummy").map_err(write_err);
+        let _ = writeln!(&mut main_file, "scoreboard objectives add reg3 dummy").map_err(write_err);
     }
 
     main_file
 }
 
+fn write_err(err: std::io::Error) {
+    eprintln!("ERROR: could not write file: {err}");
+}
+
 pub fn gen_code(
     output_dir_path: &Path,
     syntax: &parser::Syntax
-) {
+) -> Result<()> {
     let function_dir = output_dir_path.join("function");
     let _ = std::fs::create_dir_all(&function_dir)
         .inspect_err(|err| {
@@ -54,91 +53,85 @@ pub fn gen_code(
         for stmt_i in func.body.clone() {
             match &syntax.stmts[stmt_i] {
                 parser::Stmt::VarAssign { name, expr } => {
-                    write_file(&mut curr_fn, format!("\n# assign var `{}`\n", name).as_bytes());
+                    let _ = writeln!(&mut curr_fn, "\n# assign var `{}`", name).map_err(write_err);
 
                     let mut reg_idx = 0;
                     for expr_i in expr.clone() {
                         match syntax.exprs[expr_i] {
                             parser::Expr::Var(n) => {
-                                write_file(
+                                let _ = writeln!(
                                     &mut curr_fn,
-                                    format!(
-                                        "execute store result score accum reg{} run data get storage minecraft:storage {}\n",
-                                        reg_idx,
-                                        n
-                                    ).as_bytes()
-                                );
+                                    "execute store result score accum reg{} run data get storage minecraft:storage {}",
+                                    reg_idx,
+                                    n
+                                ).map_err(write_err)?;
                                 reg_idx += 1;
                             },
+
                             parser::Expr::Num(n) => {
-                                write_file(
+                                let _ = writeln!(
                                     &mut curr_fn,
-                                    format!(
-                                        "scoreboard players set accum reg{} {}\n",
-                                        reg_idx,
-                                        n
-                                    ).as_bytes()
-                                );
+                                    "scoreboard players set accum reg{} {}",
+                                    reg_idx, n
+                                ).map_err(write_err)?;
                                 reg_idx += 1;
                             },
+
                             parser::Expr::OpAdd  => {
                                 reg_idx -= 1;
-                                write_file(
+                                let _ = writeln!(
                                     &mut curr_fn,
-                                    format!(
-                                        "scoreboard players operation accum reg{} += accum reg{}\n",
-                                        reg_idx-1,
-                                        reg_idx
-                                    ).as_bytes()
-                                );
+                                    "scoreboard players operation accum reg{} += accum reg{}",
+                                    reg_idx-1,
+                                    reg_idx
+                                ).map_err(write_err)?;
                             },
+
                             parser::Expr::OpSub  => {
                                 reg_idx -= 1;
-                                write_file(
+                                let _ = writeln!(
                                     &mut curr_fn,
-                                    format!(
-                                        "scoreboard players operation accum reg{} -= accum reg{}\n",
-                                        reg_idx-1,
-                                        reg_idx
-                                    ).as_bytes()
-                                );
+                                    "scoreboard players operation accum reg{} -= accum reg{}",
+                                    reg_idx-1,
+                                    reg_idx
+                                ).map_err(write_err)?;
                             },
+
                             parser::Expr::OpMul  => {
                                 reg_idx -= 1;
-                                write_file(
+                                let _ = writeln!(
                                     &mut curr_fn,
-                                    format!(
-                                        "scoreboard players operation accum reg{} *= accum reg{}\n",
-                                        reg_idx-1,
-                                        reg_idx
-                                    ).as_bytes()
-                                );
+                                    "scoreboard players operation accum reg{} *= accum reg{}",
+                                    reg_idx-1,
+                                    reg_idx
+                                ).map_err(write_err)?;
                             },
+
                             parser::Expr::OpDiv  => {
                                 reg_idx -= 1;
-                                write_file(
+                                let _ = writeln!(
                                     &mut curr_fn,
-                                    format!(
-                                        "scoreboard players operation accum reg{} /= accum reg{}\n",
-                                        reg_idx-1,
-                                        reg_idx
-                                    ).as_bytes()
-                                );
+                                    "scoreboard players operation accum reg{} /= accum reg{}",
+                                    reg_idx-1,
+                                    reg_idx
+                                ).map_err(write_err)?;
                             },
+
                             _ => unreachable!()
                         }
                     }
 
-                    write_file(
+                    let _ = writeln!(
                         &mut curr_fn,
-                        format!(
-                            "execute store result storage minecraft:storage {} int 1 run scoreboard players get accum reg0\n",
-                            name
-                        ).as_bytes()
-                    );
+                        "execute store result storage minecraft:storage {} int 1 run scoreboard players get accum reg0",
+                        name
+                    ).map_err(write_err)?;
                 },
+
                 _ => todo!()
             }
         }
     }
+
+    Ok(())
 }

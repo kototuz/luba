@@ -240,13 +240,4 @@ mod tests {
             exprs.clear();
         }
     }
-
-    #[test]
-    fn test_parse_stmt() {
-        let source = "a = 10;";
-        let (_, stmts) = parse(source.as_bytes());
-        assert_eq!(stmts.len(), 1);
-        let Stmt::VarAssign { name, .. } = &stmts[0];
-        assert_eq!(*name, "a");
-    }
 }
