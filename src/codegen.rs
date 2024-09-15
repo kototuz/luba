@@ -50,6 +50,7 @@ pub fn gen_code(
             create_mcfn_file(&function_dir, func.name)
         };
 
+        // TODO: refactor the expression generation (specifically that pattern `12341234123+++++---++`)
         for stmt_i in func.body.clone() {
             match &syntax.stmts[stmt_i] {
                 parser::Stmt::VarAssign { name, expr } => {
