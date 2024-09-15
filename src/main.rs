@@ -22,12 +22,12 @@ fn main() {
         exit(1);
     });
 
-    let (mut exprs, mut stmts) = parser::parse(buffer.as_bytes());
+    let syntax = parser::parse(buffer.as_bytes());
 
     let output_dir = std::env::current_dir().unwrap_or_else(|err| {
         eprintln!("ERROR: could not get current dir: {err}");
         exit(1);
     });
 
-    codegen::gen_dp(output_dir.as_path(), &mut exprs, &mut stmts);
+    codegen::gen_dp(output_dir.as_path(), &syntax);
 }

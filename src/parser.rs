@@ -4,7 +4,14 @@ use std::process::exit;
 
 #[derive(Debug)]
 pub enum Stmt<'a> {
-    VarAssign { name: &'a str, expr: Range<usize> }
+    VarAssign { name: &'a str, expr: Range<usize> },
+}
+
+type Block = Range<usize>;
+
+pub struct FnDecl<'a> {
+    pub name: &'a str,
+    pub body: Block
 }
 
 #[derive(Debug, PartialEq)]
@@ -20,33 +27,62 @@ pub enum Expr<'a> {
     Num(i32),
 }
 
+pub struct Syntax<'a> {
+    pub exprs: Vec<Expr<'a>>,
+    pub stmts: Vec<Stmt<'a>>,
+    pub fns:   Vec<FnDecl<'a>>
+}
 
-
-pub fn parse<'a>(source: &'a [u8]) -> (Vec<Expr<'a>>, Vec<Stmt<'a>>) {
+pub fn parse(source: &[u8]) -> Syntax {
     use self::lex::*;
 
-    let mut expr_buf: Vec<Expr> = Vec::new();
-    let mut stmt_buf: Vec<Stmt> = Vec::new();
     let mut lex = Lexer::new();
+    let mut ret = Syntax {
+        exprs: Vec::new(),
+        stmts: Vec::new(),
+        fns:   Vec::new(),
+    };
 
-    while let Some(tok) = lex.peek(source) {
-        match tok.kind {
-            TokenKind::Name => {
-                let _ = lex.next(source);
+    while let Some(tok) = lex.next(source) {
+        if tok.kind != TokenKind::KeywordFn {
+            eprintln!(
+                "ERROR:{}: function declaration was expected, but found `{}`",
+                lex.loc,
+                tok.kind,
+            );
+            exit(1);
+        }
 
-                let _ = lex.expect_next(source, TokenKind::Eq);
-                let expr = parse_expr(&mut expr_buf, &mut lex, source);
-                stmt_buf.push(Stmt::VarAssign { name: tok.text, expr });
-                let _ = lex.expect_next(source, TokenKind::Semicolon);
-            },
-            _ => {
-                eprintln!("ERROR:{}: undefined statement", lex.loc);
-                exit(1);
+        let name = lex.expect_next(source, TokenKind::Name);
+
+        // TODO: parameters
+        let _ = lex.expect_next(source, TokenKind::OpenParen);
+        let _ = lex.expect_next(source, TokenKind::CloseParen);
+
+        let _ = lex.expect_next(source, TokenKind::OpenCurly);
+
+        let mut block = Block { start: ret.stmts.len(), end: 0 };
+        while let Some(t) = lex.next(source) {
+            match t.kind {
+                TokenKind::Name => {
+                    let _ = lex.expect_next(source, TokenKind::Eq);
+                    let expr = parse_expr(&mut ret.exprs, &mut lex, source);
+                    let _ = lex.expect_next(source, TokenKind::Semicolon);
+                    ret.stmts.push(Stmt::VarAssign { name: t.text, expr });
+                    block.end += 1;
+                },
+                TokenKind::CloseCurly => break,
+                _ => todo!()
             }
         }
+
+        ret.fns.push(FnDecl {
+            name: name.text,
+            body: block
+        });
     }
 
-    (expr_buf, stmt_buf) 
+    ret
 }
 
 fn parse_expr<'a>(

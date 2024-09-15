@@ -32,6 +32,9 @@ pub enum TokenKind {
     Semicolon,
     OpenParen,
     CloseParen,
+    OpenCurly,
+    CloseCurly,
+    KeywordFn,
 }
 
 
@@ -73,12 +76,18 @@ impl<'a> Lexer<'a> {
             b';' => { kind = TokenKind::Semicolon;  end += 1; },
             b'(' => { kind = TokenKind::OpenParen;  end += 1; },
             b')' => { kind = TokenKind::CloseParen; end += 1; },
+            b'{' => { kind = TokenKind::OpenCurly;  end += 1; },
+            b'}' => { kind = TokenKind::CloseCurly; end += 1; },
             s @ _ => {
                 end += 1;
                 if s.is_ascii_alphabetic() {
-                    kind = TokenKind::Name;
                     while end < src.len() && src[end].is_ascii_alphanumeric() {
                         end += 1;
+                    }
+
+                    match &src[self.cur..end] {
+                        b"fn" => kind = TokenKind::KeywordFn,
+                        _ => kind = TokenKind::Name
                     }
                 } else if s.is_ascii_digit() {
                     kind = TokenKind::Num;
@@ -101,7 +110,15 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        self.peeked = Some(Token { kind, text: std::str::from_utf8(&src[self.cur..end]).unwrap() });
+        let text = std::str::from_utf8(&src[self.cur..end]).unwrap_or_else(|err| {
+            eprintln!(
+                "ERROR:{}: could not translate `u8` bytes to `str`: {err}",
+                self.loc
+            );
+            exit(1);
+        });
+
+        self.peeked = Some(Token { kind, text });
         self.peeked.clone()
     }
 
@@ -194,6 +211,9 @@ impl fmt::Display for TokenKind {
             TokenKind::Semicolon  => ";",
             TokenKind::OpenParen  => "(",
             TokenKind::CloseParen => ")",
+            TokenKind::KeywordFn  => "fn",
+            TokenKind::OpenCurly  => "{",
+            TokenKind::CloseCurly => "}",
         })
     }
 }
