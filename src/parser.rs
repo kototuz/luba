@@ -1,4 +1,4 @@
-use crate::lexer as lex;
+use lexer::*;
 use std::ops::Range;
 use std::process::exit;
 
@@ -34,8 +34,6 @@ pub struct Syntax<'a> {
 }
 
 pub fn parse(source: &[u8]) -> Syntax {
-    use self::lex::*;
-
     let mut lex = Lexer::new();
     let mut ret = Syntax {
         exprs: Vec::new(),
@@ -87,12 +85,10 @@ pub fn parse(source: &[u8]) -> Syntax {
 
 fn parse_expr<'a>(
     expr_buf: &mut Vec<Expr<'a>>,
-    lex: &mut lex::Lexer<'a>,
+    lex: &mut Lexer<'a>,
     source: &'a [u8]
 ) -> Range<usize> {
     // the implementation based on: https://en.wikipedia.org/wiki/Shunting_yard_algorithm
-    use self::lex::*;
-
     let mut tok: Token;
     let mut ret = Range { start: expr_buf.len(), end: 0 };
     let mut op_stack: Vec<Expr> = Vec::new();
@@ -191,6 +187,32 @@ fn parse_expr<'a>(
             }
         }
     }
+}
+
+
+mod lexer;
+fn main() {
+    let source = "1 + 3 * (4 + 5 * (6 + 7 * (8 + 9 * (10 + 11)))) - 8 + 9 / 3;";
+    println!("{}\n=>", source);
+
+    let mut expr_buf: Vec<Expr> = Vec::new();
+    let expr_range = parse_expr(
+        &mut expr_buf,
+        &mut Lexer::new(),
+        source.as_bytes()
+    );
+
+    for expr_i in expr_range {
+        match expr_buf[expr_i] {
+            Expr::Num(z) => print!("({})", z),
+            Expr::OpAdd  => print!("+"),
+            Expr::OpSub  => print!("-"),
+            Expr::OpMul  => print!("*"),
+            Expr::OpDiv  => print!("/"),
+            _ => unreachable!()
+        }
+    }
+    print!("\n");
 }
 
 

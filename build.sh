@@ -11,6 +11,11 @@ case "$1" in
         ./bin/mcs
         ;;
 
+    "debug-parser")
+        rustc -o ./bin/debug-parser ./src/parser.rs
+        ./bin/debug-parser
+        ;;
+
     *)
         rustc -o ./bin/mcs -g ./src/main.rs
         ;;
