@@ -32,7 +32,7 @@ fn create_main(dir: &Path) -> File {
     main_file
 }
 
-pub fn gen_dp(
+pub fn gen_code(
     output_dir_path: &Path,
     syntax: &parser::Syntax
 ) {

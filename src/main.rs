@@ -29,5 +29,5 @@ fn main() {
         exit(1);
     });
 
-    codegen::gen_dp(output_dir.as_path(), &syntax);
+    codegen::gen_code(output_dir.as_path(), &syntax);
 }
