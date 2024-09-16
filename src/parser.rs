@@ -83,7 +83,7 @@ pub fn parse(source: &[u8]) -> Syntax {
     ret
 }
 
-fn parse_expr<'a>(
+pub fn parse_expr<'a>(
     expr_buf: &mut Vec<Expr<'a>>,
     lex: &mut Lexer<'a>,
     source: &'a [u8]
@@ -188,33 +188,6 @@ fn parse_expr<'a>(
         }
     }
 }
-
-
-mod lexer;
-fn main() {
-    let source = "1 + 3 * (4 + 5 * (6 + 7 * (8 + 9 * (10 + 11)))) - 8 + 9 / 3;";
-    println!("{}\n=>", source);
-
-    let mut expr_buf: Vec<Expr> = Vec::new();
-    let expr_range = parse_expr(
-        &mut expr_buf,
-        &mut Lexer::new(),
-        source.as_bytes()
-    );
-
-    for expr_i in expr_range {
-        match expr_buf[expr_i] {
-            Expr::Num(z) => print!("({})", z),
-            Expr::OpAdd  => print!("+"),
-            Expr::OpSub  => print!("-"),
-            Expr::OpMul  => print!("*"),
-            Expr::OpDiv  => print!("/"),
-            _ => unreachable!()
-        }
-    }
-    print!("\n");
-}
-
 
 
 #[cfg(test)]

@@ -12,7 +12,7 @@ case "$1" in
         ;;
 
     "debug-parser")
-        rustc -o ./bin/debug-parser ./src/parser.rs
+        rustc -o ./bin/debug-parser ./src/debug_parser.rs
         ./bin/debug-parser
         ;;
 
