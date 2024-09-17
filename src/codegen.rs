@@ -13,22 +13,14 @@ fn create_mcfn_file(dir: &Path, name: &str) -> File {
     })
 }
 
-fn create_main(dir: &Path) -> File {
-    let mut main_file = create_mcfn_file(dir, "main");
-
-    { // generate pre-main
-      // TODO: for math operations consider using `minecraft storage`
-        let _ = writeln!(&mut main_file, "scoreboard objectives add reg0 dummy").map_err(write_err);
-        let _ = writeln!(&mut main_file, "scoreboard objectives add reg1 dummy").map_err(write_err);
-        let _ = writeln!(&mut main_file, "scoreboard objectives add reg2 dummy").map_err(write_err);
-        let _ = writeln!(&mut main_file, "scoreboard objectives add reg3 dummy").map_err(write_err);
-    }
-
-    main_file
-}
-
 fn write_err(err: std::io::Error) {
     eprintln!("ERROR: could not write file: {err}");
+}
+
+fn gen_premain(main: &mut File) -> Result<()> {
+    let _ = writeln!(main, "scoreboard objectives add r0 dummy").map_err(write_err)?;
+    let _ = writeln!(main, "scoreboard objectives add r1 dummy").map_err(write_err)?;
+    Ok(())
 }
 
 pub fn gen_code(
@@ -44,89 +36,64 @@ pub fn gen_code(
 
     let mut curr_fn: File;
     for func in &syntax.fns {
-        curr_fn = if func.name == "main" {
-            create_main(&function_dir)
-        } else {
-            create_mcfn_file(&function_dir, func.name)
-        };
+        curr_fn = create_mcfn_file(&function_dir, func.name);
+        if func.name == "main" { let _ = gen_premain(&mut curr_fn)?; }
 
-        // TODO: refactor the expression generation (specifically that pattern `12341234123+++++---++`)
+        let _ = writeln!(&mut curr_fn, "data modify storage mcs local append value {{}}").map_err(write_err)?;
         for stmt_i in func.body.clone() {
             match &syntax.stmts[stmt_i] {
+                // TODO: refactor the expression generation (specifically that pattern `12341234123+++++---++`)
                 parser::Stmt::VarAssign { name, expr } => {
-                    let _ = writeln!(&mut curr_fn, "\n# assign var `{}`", name).map_err(write_err);
+                    let _ = writeln!(&mut curr_fn, "\n# assign var `{}`", name).map_err(write_err)?;
 
-                    let mut reg_idx = 0;
                     for expr_i in expr.clone() {
                         match syntax.exprs[expr_i] {
                             parser::Expr::Var(n) => {
-                                let _ = writeln!(
-                                    &mut curr_fn,
-                                    "execute store result score accum reg{} run data get storage minecraft:storage {}",
-                                    reg_idx,
-                                    n
-                                ).map_err(write_err)?;
-                                reg_idx += 1;
+                                let _ = writeln!(&mut curr_fn, "data modify storage mcs stack append from storage mcs local[0].{n}",).map_err(write_err)?;
                             },
 
                             parser::Expr::Num(n) => {
-                                let _ = writeln!(
-                                    &mut curr_fn,
-                                    "scoreboard players set accum reg{} {}",
-                                    reg_idx, n
-                                ).map_err(write_err)?;
-                                reg_idx += 1;
+                                let _ = writeln!(&mut curr_fn, "data modify storage mcs stack append value {n}").map_err(write_err)?;
                             },
 
                             parser::Expr::OpAdd  => {
-                                reg_idx -= 1;
-                                let _ = writeln!(
-                                    &mut curr_fn,
-                                    "scoreboard players operation accum reg{} += accum reg{}",
-                                    reg_idx-1,
-                                    reg_idx
-                                ).map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result score accum r0 run data get storage mcs stack[-2]").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result score accum r1 run data get storage mcs stack[-1]").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "scoreboard players operation accum r0 += accum r1").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result storage mcs stack[-2] int 1 run scoreboard players get accum r0").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "data remove storage mcs stack[-1]").map_err(write_err)?;
                             },
 
                             parser::Expr::OpSub  => {
-                                reg_idx -= 1;
-                                let _ = writeln!(
-                                    &mut curr_fn,
-                                    "scoreboard players operation accum reg{} -= accum reg{}",
-                                    reg_idx-1,
-                                    reg_idx
-                                ).map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result score accum r0 run data get storage mcs stack[-2]").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result score accum r1 run data get storage mcs stack[-1]").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "scoreboard players operation accum r0 -= accum r1").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result storage mcs stack[-2] int 1 run scoreboard players get accum r0").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "data remove storage mcs stack[-1]").map_err(write_err)?;
                             },
 
                             parser::Expr::OpMul  => {
-                                reg_idx -= 1;
-                                let _ = writeln!(
-                                    &mut curr_fn,
-                                    "scoreboard players operation accum reg{} *= accum reg{}",
-                                    reg_idx-1,
-                                    reg_idx
-                                ).map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result score accum r0 run data get storage mcs stack[-2]").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result score accum r1 run data get storage mcs stack[-1]").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "scoreboard players operation accum r0 *= accum r1").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result storage mcs stack[-2] int 1 run scoreboard players get accum r0").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "data remove storage mcs stack[-1]").map_err(write_err)?;
                             },
 
                             parser::Expr::OpDiv  => {
-                                reg_idx -= 1;
-                                let _ = writeln!(
-                                    &mut curr_fn,
-                                    "scoreboard players operation accum reg{} /= accum reg{}",
-                                    reg_idx-1,
-                                    reg_idx
-                                ).map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result score accum r0 run data get storage mcs stack[-2]").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result score accum r1 run data get storage mcs stack[-1]").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "scoreboard players operation accum r0 /= accum r1").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "execute store result storage mcs stack[-2] int 1 run scoreboard players get accum r0").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "data remove storage mcs stack[-1]").map_err(write_err)?;
                             },
 
                             _ => unreachable!()
                         }
                     }
 
-                    let _ = writeln!(
-                        &mut curr_fn,
-                        "execute store result storage minecraft:storage {} int 1 run scoreboard players get accum reg0",
-                        name
-                    ).map_err(write_err)?;
+                    let _ = writeln!(&mut curr_fn, "execute store result storage mcs local[0].{name} int 1 run data get storage mcs stack[0]").map_err(write_err)?;
+                    let _ = writeln!(&mut curr_fn, "data remove storage mcs stack[0]");
                 },
 
                 _ => todo!()

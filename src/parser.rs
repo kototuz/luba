@@ -59,7 +59,7 @@ pub fn parse(source: &[u8]) -> Syntax {
 
         let _ = lex.expect_next(source, TokenKind::OpenCurly);
 
-        let mut block = Block { start: ret.stmts.len(), end: 0 };
+        let mut block = Block { start: ret.stmts.len(), end: 1 };
         while let Some(t) = lex.next(source) {
             match t.kind {
                 TokenKind::Name => {
