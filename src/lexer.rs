@@ -1,22 +1,23 @@
-use std::process::exit;
+use super::Result;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Loc {
     pub row: usize,
-    pub col: usize,
+    pub col: usize
 }
 
 #[derive(Debug)]
 pub struct Lexer<'a> {
-    pub cur: usize,
-    pub peeked: Option<Token<'a>>,
-    pub loc: Loc
+    pub loc: Loc,
+    src: &'a [u8],
+    curr: usize,
+    peeked: Option<Token>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Token<'a> {
+pub struct Token {
     pub kind: TokenKind,
-    pub text: &'a str
+    pub text: &'static str
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -40,153 +41,133 @@ pub enum TokenKind {
 
 
 impl<'a> Lexer<'a> {
-    pub fn new() -> Self {
+    pub fn new(src: &'a [u8]) -> Self {
         Self {
-            cur: 0,
+            src,
+            curr: 0,
             peeked: None,
-            loc: Loc { row: 0, col: 0 }
+            loc: Loc { row: 1, col: 0 }
         }
     }
 
-    pub fn peek(&mut self, src: &'a [u8]) -> Option<Token<'a>> {
+    pub fn peek(&mut self) -> Result<Option<Token>> {
         if self.peeked.is_some() {
-            return self.peeked.clone();
+            return Ok(self.peeked.clone());
         }
 
-        if self.cur == src.len() { return None; }
-        while src[self.cur].is_ascii_whitespace() {
-            if src[self.cur] == b'\n' {
+        if self.curr == self.src.len() { return Ok(None); }
+        while self.src[self.curr].is_ascii_whitespace() {
+            if self.src[self.curr] == b'\n' {
                 self.loc.row += 1;
                 self.loc.col = 0;
             } else {
                 self.loc.col += 1;
             }
-            self.cur += 1;
-            if self.cur == src.len() { return None; }
+            self.curr += 1;
+            if self.curr == self.src.len() { return Ok(None); }
         }
 
-        let kind: TokenKind;
-        let mut end = self.cur;
-        match src[end] {
-            b'=' => { kind = TokenKind::Eq;         end += 1; },
-            b'+' => { kind = TokenKind::Plus;       end += 1; },
-            b'-' => { kind = TokenKind::Minus;      end += 1; },
-            b'*' => { kind = TokenKind::Star;       end += 1; },
-            b'/' => { kind = TokenKind::Slash;      end += 1; },
-            b';' => { kind = TokenKind::Semicolon;  end += 1; },
-            b'(' => { kind = TokenKind::OpenParen;  end += 1; },
-            b')' => { kind = TokenKind::CloseParen; end += 1; },
-            b'{' => { kind = TokenKind::OpenCurly;  end += 1; },
-            b'}' => { kind = TokenKind::CloseCurly; end += 1; },
-            s @ _ => {
-                end += 1;
-                if s.is_ascii_alphabetic() {
-                    while end < src.len() && src[end].is_ascii_alphanumeric() {
-                        end += 1;
-                    }
 
-                    match &src[self.cur..end] {
-                        b"fn" => kind = TokenKind::KeywordFn,
-                        _ => kind = TokenKind::Name
+        let mut res_kind: TokenKind;
+        let mut res_text_end = self.curr+1;
+        match self.src[self.curr] {
+            b'=' => { res_kind = TokenKind::Eq;         },
+            b'+' => { res_kind = TokenKind::Plus;       },
+            b'-' => { res_kind = TokenKind::Minus;      },
+            b'*' => { res_kind = TokenKind::Star;       },
+            b'/' => { res_kind = TokenKind::Slash;      },
+            b';' => { res_kind = TokenKind::Semicolon   },
+            b'(' => { res_kind = TokenKind::OpenParen;  },
+            b')' => { res_kind = TokenKind::CloseParen; },
+            b'{' => { res_kind = TokenKind::OpenCurly;  },
+            b'}' => { res_kind = TokenKind::CloseCurly; },
+            s @ _ => {
+                if s.is_ascii_alphabetic() {
+                    res_kind = TokenKind::Name;
+                    while res_text_end < self.src.len() && self.src[res_text_end].is_ascii_alphanumeric() {
+                        res_text_end += 1;
                     }
                 } else if s.is_ascii_digit() {
-                    kind = TokenKind::Num;
-                    while end < src.len() && src[end].is_ascii_digit() {
-                        end += 1;
+                    res_kind = TokenKind::Num;
+                    while res_text_end < self.src.len() && self.src[res_text_end].is_ascii_digit() {
+                        res_text_end += 1;
                     }
                 } else if s == b'"' {
-                    kind = TokenKind::StrLit;
-                    while end < src.len() && src[end] != b'"' {
-                        end += 1
+                    res_kind = TokenKind::StrLit;
+                    while res_text_end < self.src.len() && self.src[res_text_end] != b'"' {
+                        res_text_end += 1
                     }
-                    end += 1;
+                    res_text_end += 1;
                 } else {
-                    eprintln!(
-                        "ERROR:{}: undefined token",
-                        self.loc
-                    );
-                    exit(1);
+                    eprintln!("ERROR:{}: undefined token", self.loc);
+                    return Err(());
                 }
             }
         }
 
-        let text = std::str::from_utf8(&src[self.cur..end]).unwrap_or_else(|err| {
-            eprintln!(
-                "ERROR:{}: could not translate `u8` bytes to `str`: {err}",
-                self.loc
+        unsafe {
+            let text = std::str::from_utf8_unchecked(
+                std::slice::from_raw_parts(
+                    self.src.as_ptr().add(self.curr),
+                    res_text_end-self.curr
+                )
             );
-            exit(1);
-        });
 
-        self.peeked = Some(Token { kind, text });
-        self.peeked.clone()
+            if text == "fn" { res_kind = TokenKind::KeywordFn }
+            self.peeked = Some(Token { kind: res_kind, text });
+        }
+
+        Ok(self.peeked.clone())
     }
 
-    pub fn next(&mut self, src: &'a [u8]) -> Option<Token<'a>> {
-        if self.peeked.is_none() { let _ = self.peek(src); }
+    pub fn next(&mut self) -> Result<Option<Token>> {
+        if self.peeked.is_none() { let _ = self.peek()?; }
         if let Some(t) = &self.peeked {
             self.loc.col += t.text.len();
-            self.cur += t.text.len();
-            self.peeked.take()
-        } else { None }
+            self.curr += t.text.len();
+            Ok(self.peeked.take())
+        } else { Ok(None) }
     }
 
-    pub fn expect_peek(&mut self, src: &'a [u8]) -> Token<'a> {
-        self.peek(src).unwrap_or_else(|| {
-            eprintln!(
-                "ERROR:{}: token was expected, but it did not appear",
-                self.loc
-            );
-            exit(1);
-        })
-    }
-
-    pub fn expect_next_oneof(&mut self, src: &'a [u8], exp_tks: &[TokenKind]) -> Token<'a> {
-        let ret = self.peek(src).unwrap_or_else(|| {
-            eprintln!(
-                "ERROR:{}: one of {:?} was expected, but it did not appear",
-                self.loc,
-                exp_tks
-            );
-            exit(1);
-        });
-
-        for tk in exp_tks {
-            if ret.kind == *tk {
-                let _ = self.next(src);
-                return ret;
-            }
+    pub fn expect_next(&mut self, exp_tk: TokenKind) -> Result<Token> {
+        match self.peek()? {
+            None => {
+                eprintln!(
+                    "ERROR:{}: token `{}` was expected, but it did not appear",
+                    self.loc,
+                    exp_tk,
+                );
+                Err(())
+            },
+            Some(token) if token.kind != exp_tk => {
+                eprintln!(
+                    "ERROR:{}: token `{}` was expected, but found `{}`",
+                    self.loc,
+                    exp_tk,
+                    token.kind
+                );
+                Err(())
+            },
+            _ => Ok(self.next().unwrap().unwrap())
         }
-
-        eprint!("ERROR:{}: one of the [ ", self.loc);
-        for tk in exp_tks { eprint!("`{tk}` "); }
-        eprint!("] was expected, but found `{}`\n", ret.kind);
-
-        exit(1);
     }
 
-    pub fn expect_next(&mut self, src: &'a [u8], exp_tk: TokenKind) -> Token<'a> {
-        let ret = self.peek(src).unwrap_or_else(|| {
-            eprintln!(
-                "ERROR:{}: token `{}` was expected, but it did not appear",
-                self.loc,
-                exp_tk,
-            );
-            exit(1);
-        });
-
-        if ret.kind != exp_tk {
-            eprintln!(
-                "ERROR:{}: token `{}` was expected, but found `{}`",
-                self.loc,
-                exp_tk,
-                ret.kind
-            );
-            exit(1);
+    pub fn expect_next_oneof(&mut self, exp_tks: &[TokenKind]) -> Result<Token> {
+        match self.peek()? {
+            None => {
+                eprint!("ERROR:{}: one of the [ ", self.loc);
+                for tk in exp_tks { eprint!("`{tk}` "); }
+                eprint!("] was expected, but it did not appear\n");
+                Err(())
+            },
+            Some(token) if !exp_tks.contains(&token.kind) => {
+                eprint!("ERROR:{}: one of the [ ", self.loc);
+                for tk in exp_tks { eprint!("`{tk}` "); }
+                eprint!("] was expected, but found `{}`\n", token.kind);
+                Err(())
+            },
+            _ => Ok(self.next().unwrap().unwrap())
         }
-
-        let _ = self.next(src);
-        ret
     }
 }
 
@@ -232,7 +213,7 @@ mod tests {
 
     #[test]
     fn test_next() {
-        let mut lexer = Lexer::new();
+        let mut lexer = Lexer::new(SOURCE);
         let expected = [
             ("num1",            TokenKind::Name),
             ("=",               TokenKind::Eq),
@@ -253,32 +234,37 @@ mod tests {
         ];
 
         let mut i = 0;
-        while let Some(tok) = &lexer.next(SOURCE) {
+        while let Some(tok) = &lexer.next().unwrap() {
             assert_eq!(expected[i].0, tok.text, "{}", i);
+            assert_eq!(expected[i].1, tok.kind);
             i += 1;
         }
     }
 
     #[test]
+    fn test_next_with_undefined_token() {
+        let mut lexer = Lexer::new(b"$");
+        assert!(lexer.next().is_err());
+    }
+
+    #[test]
     fn test_next_with_eof() { 
-        let mut lexer = Lexer::new();
-        assert!(lexer.next("".as_bytes()).is_none());
+        let mut lexer = Lexer::new("".as_bytes());
+        assert!(lexer.next().unwrap().is_none());
     }
 
     #[test]
     fn test_peek() {
-        let mut lexer = Lexer::new();
+        let mut lexer = Lexer::new(SOURCE);
 
-        let t1 = lexer.peek(SOURCE).unwrap();
-        let t2 = lexer.peek(SOURCE).unwrap();
+        let t1 = lexer.peek().unwrap().unwrap();
+        let t2 = lexer.peek().unwrap().unwrap();
         assert_eq!(t1.text, t2.text);
 
-        let t3 = lexer.next(SOURCE).unwrap();
+        let t3 = lexer.next().unwrap().unwrap();
         assert_eq!(t1.text, t3.text);
 
-        let t3 = lexer.next(SOURCE).unwrap();
+        let t3 = lexer.next().unwrap().unwrap();
         assert_ne!(t1.text, t3.text);
     }
 }
-
-// TODO: better error reporting

@@ -2,34 +2,39 @@ mod lexer;
 mod parser;
 mod codegen;
 
-use std::process::exit;
 use std::io::prelude::*;
+use std::process::ExitCode;
 
 type Result<T> = std::result::Result<T, ()>;
 
-fn main() {
-    let file_path = std::env::args().nth(1).unwrap_or_else(|| {
+fn main2() -> Result<()> {
+    let file_path = std::env::args().nth(1).ok_or_else(|| {
         eprintln!("ERROR: source file must be provided");
-        exit(1);
-    });
+    })?;
 
-    let mut src_file = std::fs::File::open(&file_path).unwrap_or_else(|err| {
+    let mut src_file = std::fs::File::open(&file_path).map_err(|err| {
         eprintln!("ERROR: could not open file `{file_path}`: {err}");
-        exit(1);
-    });
+    })?;
 
     let mut buffer = String::new();
-    let _ = src_file.read_to_string(&mut buffer).inspect_err(|err| {
+    let _ = src_file.read_to_string(&mut buffer).map_err(|err| {
         eprintln!("ERROR: could not read file `{file_path}`: {err}");
-        exit(1);
-    });
+    })?;
 
-    let syntax = parser::parse(buffer.as_bytes());
-
-    let output_dir = std::env::current_dir().unwrap_or_else(|err| {
+    let output_dir = std::env::current_dir().map_err(|err| {
         eprintln!("ERROR: could not get current dir: {err}");
-        exit(1);
-    });
+    })?;
 
-    let _ = codegen::gen_code(output_dir.as_path(), &syntax);
+    let mut lexer = lexer::Lexer::new(buffer.as_bytes());
+    let syntax = parser::parse(&mut lexer)?;
+    let _ = codegen::gen_code(output_dir.as_path(), &syntax)?;
+
+    Ok(())
+}
+
+fn main() -> ExitCode {
+    match main2() {
+        Err(_) => ExitCode::FAILURE,
+        Ok(_)  => ExitCode::SUCCESS,
+    }
 }
