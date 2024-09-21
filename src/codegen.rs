@@ -38,18 +38,15 @@ pub fn gen_code(
     for func in &syntax.fns {
         curr_fn = create_mcfn_file(&function_dir, func.name);
         if func.name == "main" { let _ = gen_premain(&mut curr_fn)?; }
-
-        let _ = writeln!(&mut curr_fn, "data modify storage mcs local append value {{}}").map_err(write_err)?;
         for stmt_i in func.body.clone() {
             match &syntax.stmts[stmt_i] {
                 // TODO: refactor the expression generation (specifically that pattern `12341234123+++++---++`)
                 parser::Stmt::VarAssign { name, expr } => {
                     let _ = writeln!(&mut curr_fn, "\n# assign var `{}`", name).map_err(write_err)?;
-
                     for expr_i in expr.clone() {
                         match syntax.exprs[expr_i] {
                             parser::Expr::Var(n) => {
-                                let _ = writeln!(&mut curr_fn, "data modify storage mcs stack append from storage mcs local[0].{n}",).map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "data modify storage mcs stack append from storage mcs local[-1].{n}",).map_err(write_err)?;
                             },
 
                             parser::Expr::Num(n) => {
@@ -88,12 +85,35 @@ pub fn gen_code(
                                 let _ = writeln!(&mut curr_fn, "data remove storage mcs stack[-1]").map_err(write_err)?;
                             },
 
+                            parser::Expr::FnCall(n) => {
+                                let _ = writeln!(&mut curr_fn, "data modify storage mcs local append value {{}}").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "function test:{n}").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "data remove storage mcs local[-1]").map_err(write_err)?;
+                                let _ = writeln!(&mut curr_fn, "data modify storage mcs stack append from storage mcs return").map_err(write_err)?;
+                            },
+
                             _ => unreachable!()
                         }
                     }
 
-                    let _ = writeln!(&mut curr_fn, "execute store result storage mcs local[0].{name} int 1 run data get storage mcs stack[0]").map_err(write_err)?;
+                    let _ = writeln!(&mut curr_fn, "execute store result storage mcs local[-1].{name} int 1 run data get storage mcs stack[0]").map_err(write_err)?;
                     let _ = writeln!(&mut curr_fn, "data remove storage mcs stack[0]");
+                },
+
+                parser::Stmt::Return(expr) => {
+                    match expr {
+                        parser::Expr::Num(z) => {
+                            let _ = writeln!(&mut curr_fn, "data modify storage mcs return set value {z}").map_err(write_err)?;
+                            let _ = writeln!(&mut curr_fn, "return 1").map_err(write_err)?;
+                        },
+
+                        parser::Expr::Var(n) => {
+                            let _ = writeln!(&mut curr_fn, "data modify storage mcs return set from storage mcs local[-1].{n}").map_err(write_err)?;
+                            let _ = writeln!(&mut curr_fn, "return 1").map_err(write_err)?;
+                        },
+
+                        _ => unreachable!()
+                    }
                 },
 
                 _ => todo!()

@@ -36,6 +36,7 @@ pub enum TokenKind {
     OpenCurly,
     CloseCurly,
     KeywordFn,
+    KeywordReturn
 }
 
 
@@ -114,6 +115,7 @@ impl<'a> Lexer<'a> {
             );
 
             if text == "fn" { res_kind = TokenKind::KeywordFn }
+            else if text == "return" { res_kind = TokenKind::KeywordReturn; }
             self.peeked = Some(Token { kind: res_kind, text });
         }
 
@@ -181,20 +183,21 @@ impl fmt::Display for Loc {
 impl fmt::Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
-            TokenKind::Name       => "name",
-            TokenKind::StrLit     => "string literal",
-            TokenKind::Num        => "number",
-            TokenKind::Eq         => "=",
-            TokenKind::Plus       => "+",
-            TokenKind::Minus      => "-",
-            TokenKind::Slash      => "/",
-            TokenKind::Star       => "*",
-            TokenKind::Semicolon  => ";",
-            TokenKind::OpenParen  => "(",
-            TokenKind::CloseParen => ")",
-            TokenKind::KeywordFn  => "fn",
-            TokenKind::OpenCurly  => "{",
-            TokenKind::CloseCurly => "}",
+            TokenKind::Name          => "name",
+            TokenKind::StrLit        => "string literal",
+            TokenKind::Num           => "number",
+            TokenKind::Eq            => "=",
+            TokenKind::Plus          => "+",
+            TokenKind::Minus         => "-",
+            TokenKind::Slash         => "/",
+            TokenKind::Star          => "*",
+            TokenKind::Semicolon     => ";",
+            TokenKind::OpenParen     => "(",
+            TokenKind::CloseParen    => ")",
+            TokenKind::KeywordFn     => "fn",
+            TokenKind::KeywordReturn => "return",
+            TokenKind::OpenCurly     => "{",
+            TokenKind::CloseCurly    => "}",
         })
     }
 }
@@ -268,3 +271,5 @@ mod tests {
         assert_ne!(t1.text, t3.text);
     }
 }
+
+// TODO: more convinient way to declare and handle token kinds
