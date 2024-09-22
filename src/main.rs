@@ -1,6 +1,6 @@
 mod lexer;
 mod parser;
-mod codegen;
+mod compiler;
 
 use std::io::prelude::*;
 use std::process::ExitCode;
@@ -21,13 +21,9 @@ fn main2() -> Result<()> {
         eprintln!("ERROR: could not read file `{file_path}`: {err}");
     })?;
 
-    let output_dir = std::env::current_dir().map_err(|err| {
-        eprintln!("ERROR: could not get current dir: {err}");
-    })?;
-
     let mut lexer = lexer::Lexer::new(buffer.as_bytes());
     let syntax = parser::parse(&mut lexer)?;
-    let _ = codegen::gen_code(output_dir.as_path(), &syntax)?;
+    let _ = compiler::compile(&syntax)?;
 
     Ok(())
 }
