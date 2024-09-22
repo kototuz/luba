@@ -67,7 +67,6 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Syntax<'a>> {
                 TokenKind::Name => {
                     let _ = lex.expect_next(TokenKind::Eq)?;
                     let expr = parse_expr(&mut ret.exprs, lex)?;
-                    let _ = lex.expect_next(TokenKind::Semicolon)?;
                     ret.stmts.push(Stmt::VarAssign { name: t.text, expr });
                     block.end += 1;
                 },
@@ -77,15 +76,15 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Syntax<'a>> {
                         TokenKind::Name,
                         TokenKind::Num
                     ])?;
-                    let _ = lex.expect_next(TokenKind::Semicolon)?;
+                    let _ = lex.expect_next(TokenKind::Semicolon);
                     ret.stmts.push(Stmt::Return(
-                            match token.kind {
-                                TokenKind::Name => Expr::Var(token.text),
-                                TokenKind::Num  => Expr::Num(
-                                    token.text.parse::<i32>().unwrap()
-                                ),
-                                _ => unreachable!()
-                            }
+                        match token.kind {
+                            TokenKind::Name => Expr::Var(token.text),
+                            TokenKind::Num  => Expr::Num(
+                                token.text.parse::<i32>().unwrap()
+                            ),
+                            _ => unreachable!()
+                        }
                     ));
                     block.end += 1;
                 },
@@ -119,12 +118,13 @@ pub fn parse_expr<'a>(
         &[TokenKind::Name, TokenKind::Num, TokenKind::OpenParen];
     const READ_OR_CLOSE_PAREN: &[TokenKind] =
         &[TokenKind::Name, TokenKind::Num, TokenKind::OpenParen, TokenKind::CloseParen];
-    const OPERATIONS_OR_CLOSE_PAREN: &[TokenKind] = &[
+    const OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON: &[TokenKind] = &[
         TokenKind::Plus,
         TokenKind::Minus,
         TokenKind::Star,
         TokenKind::Slash,
-        TokenKind::CloseParen
+        TokenKind::CloseParen,
+        TokenKind::Semicolon
     ];
 
     let mut token = lex.expect_next_oneof(READ)?;
@@ -145,21 +145,13 @@ pub fn parse_expr<'a>(
                     token = lex.expect_next_oneof(READ_OR_CLOSE_PAREN)?;
                 } else {
                     expr_buf.push(Expr::Var(token.text));
-                    token = if let Some(res) = lex.peek()? {
-                        if !OPERATIONS_OR_CLOSE_PAREN.contains(&res.kind) { break }
-                        let _ = lex.next();
-                        res
-                    } else { break };
+                    token = lex.expect_next_oneof(OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON)?;
                 }
             },
 
             TokenKind::Num  => {
                 expr_buf.push(Expr::Num(token.text.parse::<i32>().unwrap()));
-                token = if let Some(res) = lex.peek()? {
-                    if !OPERATIONS_OR_CLOSE_PAREN.contains(&res.kind) { break }
-                    let _ = lex.next();
-                    res
-                } else { break };
+                token = lex.expect_next_oneof(OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON)?;
             },
 
             TokenKind::CloseParen => {
@@ -171,11 +163,7 @@ pub fn parse_expr<'a>(
                     }
                 }
                 let _ = op_stack.pop();
-                token = if let Some(res) = lex.peek()? {
-                    if !OPERATIONS_OR_CLOSE_PAREN.contains(&res.kind) { break }
-                    let _ = lex.next();
-                    res
-                } else { break };
+                token = lex.expect_next_oneof(OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON)?;
             },
 
             TokenKind::Plus => {
@@ -222,7 +210,9 @@ pub fn parse_expr<'a>(
                 token = lex.expect_next_oneof(READ)?;
             },
 
-            _ => break
+            TokenKind::Semicolon => break,
+
+            _ => unreachable!()
         }
     }
 
@@ -260,20 +250,20 @@ mod tests {
         // 1 / 2 * 3 * 4  =>   12/ 34**
         // 1 / 2 * 3 / 4  =>   12/ 3* 4/
         let map: &[(&str, &[Expr])] = &[
-            ("f()",           &[FnCall("f")]),
-            ("1 + 2",         &[Num(1), Num(2), OpAdd]),
-            ("1 + 2 + 3",     &[Num(1), Num(2), OpAdd, Num(3), OpAdd]),
-            ("1 + 2*3",       &[Num(1), Num(2), Num(3), OpMul, OpAdd]),
-            ("1 * 2 * 3",     &[Num(1), Num(2), OpMul, Num(3), OpMul]),
-            ("1 + 2*3*4",     &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd]),
-            ("1 + 2*3*4 + 5", &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd, Num(5), OpAdd]),
-            ("1 + 2*3 + 4*5", &[Num(1), Num(2), Num(3), OpMul, OpAdd, Num(4), Num(5), OpMul, OpAdd]),
-            ("1 / 2 * 3",     &[Num(1), Num(2), OpDiv, Num(3), OpMul]),
-            ("1 / 2 * 3 * 4", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpMul]),
-            ("1 / 2 * 3 / 4", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpDiv]),
-            ("1 * (2 + 3)",   &[Num(1), Num(2), Num(3), OpAdd, OpMul]),
-            ("1 * (2 + 3) + 2",   &[Num(1), Num(2), Num(3), OpAdd, OpMul, Num(2), OpAdd]),
-            ("3 + 4 * 2 / (1 - 5)", &[Num(3), Num(4), Num(2), OpMul, Num(1), Num(5), OpSub, OpDiv, OpAdd])
+            ("f();",           &[FnCall("f")]),
+            ("1 + 2;",         &[Num(1), Num(2), OpAdd]),
+            ("1 + 2 + 3;",     &[Num(1), Num(2), OpAdd, Num(3), OpAdd]),
+            ("1 + 2*3;",       &[Num(1), Num(2), Num(3), OpMul, OpAdd]),
+            ("1 * 2 * 3;",     &[Num(1), Num(2), OpMul, Num(3), OpMul]),
+            ("1 + 2*3*4;",     &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd]),
+            ("1 + 2*3*4 + 5;", &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd, Num(5), OpAdd]),
+            ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), OpMul, OpAdd, Num(4), Num(5), OpMul, OpAdd]),
+            ("1 / 2 * 3;",     &[Num(1), Num(2), OpDiv, Num(3), OpMul]),
+            ("1 / 2 * 3 * 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpMul]),
+            ("1 / 2 * 3 / 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpDiv]),
+            ("1 * (2 + 3);",   &[Num(1), Num(2), Num(3), OpAdd, OpMul]),
+            ("1 * (2 + 3) + 2;",   &[Num(1), Num(2), Num(3), OpAdd, OpMul, Num(2), OpAdd]),
+            ("3 + 4 * 2 / (1 - 5);", &[Num(3), Num(4), Num(2), OpMul, Num(1), Num(5), OpSub, OpDiv, OpAdd])
         ];
 
         let mut exprs: Vec<Expr> = Vec::new();
