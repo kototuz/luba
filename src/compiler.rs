@@ -64,8 +64,18 @@ fn compile_fn_decl(
                             let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                         },
 
+                        Expr::SetArg(idx) => {
+                            if idx == 0 {
+                                let _ = writeln!(fn_file, "data modify storage mcs local append value {{}}")?;
+                            }
+                            let _ = writeln!(fn_file, "data modify storage mcs local[-1].{idx} set from storage mcs stack[-1]")?;
+                            let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
+                        },
+
                         Expr::FnCall(n) => {
-                            let _ = writeln!(fn_file, "data modify storage mcs local append value {{}}")?;
+                            if !matches!(syntax.exprs[expr_i-1], Expr::SetArg(_)) {
+                                let _ = writeln!(fn_file, "data modify storage mcs local append value {{}}")?;
+                            }
                             let _ = writeln!(fn_file, "function test:{n}")?;
                             let _ = writeln!(fn_file, "data remove storage mcs local[-1]")?;
                             let _ = writeln!(fn_file, "data modify storage mcs stack append from storage mcs return")?;

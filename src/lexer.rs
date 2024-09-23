@@ -36,7 +36,8 @@ pub enum TokenKind {
     OpenCurly,
     CloseCurly,
     KeywordFn,
-    KeywordReturn
+    KeywordReturn,
+    Comma,
 }
 
 
@@ -82,6 +83,7 @@ impl<'a> Lexer<'a> {
             b')' => { res_kind = TokenKind::CloseParen; },
             b'{' => { res_kind = TokenKind::OpenCurly;  },
             b'}' => { res_kind = TokenKind::CloseCurly; },
+            b',' => { res_kind = TokenKind::Comma;      },
             s @ _ => {
                 if s.is_ascii_alphabetic() {
                     res_kind = TokenKind::Name;
@@ -198,6 +200,7 @@ impl fmt::Display for TokenKind {
             TokenKind::KeywordReturn => "return",
             TokenKind::OpenCurly     => "{",
             TokenKind::CloseCurly    => "}",
+            TokenKind::Comma         => ",",
         })
     }
 }

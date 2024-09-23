@@ -22,9 +22,8 @@ pub enum Expr<'a> {
     OpAdd,
     OpMul,
     OpDiv,
-
     OpenParen,
-
+    SetArg(u32),
     Var(&'a str),
     FnCall(&'a str),
     Num(i32),
@@ -123,6 +122,7 @@ pub fn parse_expr<'a>(
         TokenKind::Minus,
         TokenKind::Star,
         TokenKind::Slash,
+        TokenKind::Comma,
         TokenKind::CloseParen,
         TokenKind::Semicolon
     ];
@@ -137,12 +137,17 @@ pub fn parse_expr<'a>(
                 }
             },
 
+            // f(1, f(2 + 3)) => 1s(0)23+s(0)fs(1)f
+            // stack:
             TokenKind::Name => {
                 if let Some(Token { kind: TokenKind::OpenParen, .. }) = lex.peek()? {
                     op_stack.push(Expr::FnCall(token.text));
                     op_stack.push(Expr::OpenParen);
                     let _ = lex.next();
                     token = lex.expect_next_oneof(READ_OR_CLOSE_PAREN)?;
+                    if token.kind != TokenKind::CloseParen {
+                        op_stack.push(Expr::SetArg(0));
+                    }
                 } else {
                     expr_buf.push(Expr::Var(token.text));
                     token = lex.expect_next_oneof(OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON)?;
@@ -162,8 +167,30 @@ pub fn parse_expr<'a>(
                         return Err(());
                     }
                 }
+
                 let _ = op_stack.pop();
+                if matches!(op_stack.last(), Some(&Expr::FnCall(_))) {
+                    expr_buf.push(op_stack.pop().unwrap());
+                }
+
                 token = lex.expect_next_oneof(OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON)?;
+            },
+
+            TokenKind::Comma => {
+                loop {
+                    if let Some(&Expr::SetArg(i)) = op_stack.last() {
+                        expr_buf.push(op_stack.pop().unwrap());
+                        op_stack.push(Expr::SetArg(i+1));
+                        break;
+                    } else {
+                        expr_buf.push(op_stack.pop().unwrap());
+                        if op_stack.is_empty() {
+                            eprintln!("ERROR:{}: unexpected `,`", lex.loc);
+                            return Err(())
+                        }
+                    }
+                }
+                token = lex.expect_next_oneof(READ)?;
             },
 
             TokenKind::Plus => {
@@ -249,8 +276,12 @@ mod tests {
         // 1 / 2 * 3      =>   12/ 3*
         // 1 / 2 * 3 * 4  =>   12/ 34**
         // 1 / 2 * 3 / 4  =>   12/ 3* 4/
+        // f(1, f(2 + 3)); => 1 23+ sa f sa sa
         let map: &[(&str, &[Expr])] = &[
             ("f();",           &[FnCall("f")]),
+            ("f(1, 2);",       &[Num(1), SetArg(0), Num(2), SetArg(1), FnCall("f")]),
+            ("f(1, f(2, 3));", &[Num(1), SetArg(0), Num(2), SetArg(0), Num(3), SetArg(1), FnCall("f"), SetArg(1), FnCall("f")]),
+            ("f(f(1, 2), f(3, 4));", &[Num(1), SetArg(0), Num(2), SetArg(1), FnCall("f"), SetArg(0), Num(3), SetArg(0), Num(4), SetArg(1), FnCall("f"), SetArg(1), FnCall("f")]),
             ("1 + 2;",         &[Num(1), Num(2), OpAdd]),
             ("1 + 2 + 3;",     &[Num(1), Num(2), OpAdd, Num(3), OpAdd]),
             ("1 + 2*3;",       &[Num(1), Num(2), Num(3), OpMul, OpAdd]),
@@ -270,7 +301,7 @@ mod tests {
         for test in map {
             let range = parse_expr(&mut exprs, &mut Lexer::new(test.0.as_bytes())).unwrap();
             for x in range {
-                assert_eq!(exprs[x], test.1[x]);
+                assert_eq!(exprs[x], test.1[x], "{:?}", test);
             }
 
             exprs.clear();
