@@ -13,7 +13,8 @@ type Block = Range<usize>;
 
 pub struct FnDecl<'a> {
     pub name: &'a str,
-    pub body: Block
+    pub body: Block,
+    pub params: Vec<&'a str>
 }
 
 #[derive(Debug, PartialEq)]
@@ -52,22 +53,32 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Syntax<'a>> {
             return Err(());
         }
 
-        let name = lex.expect_next(TokenKind::Name)?;
+        let mut fn_decl = FnDecl {
+            name: lex.expect_next(TokenKind::Name)?.text,
+            params: Vec::new(), // TODO: maybe make one param buffer for every `fn_decl`
+            body: Block { start: ret.stmts.len(), end: ret.stmts.len() }
+        };
 
-        // TODO: parameters
         let _ = lex.expect_next(TokenKind::OpenParen)?;
-        let _ = lex.expect_next(TokenKind::CloseParen)?;
+        let mut tok = lex.expect_next_oneof(&[TokenKind::Name, TokenKind::CloseParen])?;
+        if tok.kind == TokenKind::Name {
+            fn_decl.params.push(tok.text);
+            tok = lex.expect_next_oneof(&[TokenKind::Comma, TokenKind::CloseParen])?;
+            while tok.kind == TokenKind::Comma {
+                fn_decl.params.push(lex.expect_next(TokenKind::Name)?.text);
+                tok = lex.expect_next_oneof(&[TokenKind::Comma, TokenKind::CloseParen])?;
+            }
+        }
+
 
         let _ = lex.expect_next(TokenKind::OpenCurly)?;
-
-        let mut block = Block { start: ret.stmts.len(), end: ret.stmts.len() };
         while let Some(t) = lex.next()? {
             match t.kind {
                 TokenKind::Name => {
                     let _ = lex.expect_next(TokenKind::Eq)?;
                     let expr = parse_expr(&mut ret.exprs, lex)?;
                     ret.stmts.push(Stmt::VarAssign { name: t.text, expr });
-                    block.end += 1;
+                    fn_decl.body.end += 1;
                 },
 
                 TokenKind::KeywordReturn => {
@@ -85,7 +96,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Syntax<'a>> {
                             _ => unreachable!()
                         }
                     ));
-                    block.end += 1;
+                    fn_decl.body.end += 1;
                 },
 
                 TokenKind::CloseCurly => break,
@@ -93,10 +104,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Syntax<'a>> {
             }
         }
 
-        ret.fns.push(FnDecl {
-            name: name.text,
-            body: block
-        });
+        ret.fns.push(fn_decl);
     }
 
     Ok(ret)

@@ -17,6 +17,11 @@ fn compile_fn_decl(
     fn_decl: &FnDecl
 ) -> IOResult<()> {
     if fn_decl.name == "main" { let _ = write_premain(fn_file)?; }
+
+    for (i, param) in fn_decl.params.iter().enumerate() {
+        let _ = writeln!(fn_file, "data modify storage mcs local[-1].{param} set from storage mcs local[-1].{i}")?;
+    }
+
     for stmt_i in fn_decl.body.clone() {
         match &syntax.stmts[stmt_i] {
             // TODO: refactor the expression generation (specifically that pattern `12341234123+++++---++`)
