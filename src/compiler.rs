@@ -211,16 +211,24 @@ pub fn compile(syntax: &Syntax) -> Result<()> {
     let function_dir = std::env::current_dir().map_err(|err| {
         eprintln!("ERROR: could not get current directory: {err}");
     })?.join("function");
+
+    if std::path::Path::exists(&function_dir) {
+        let _ = std::fs::remove_dir_all(&function_dir).map_err(|err| {
+            eprintln!("ERROR: could not clean `function` directory: {err}");
+        })?;
+    } 
+
     let _ = std::fs::create_dir_all(&function_dir).map_err(|err| {
         eprintln!("ERROR: could not create function dir: {err}");
     })?;
 
     for fn_decl in &syntax.fns {
-        let mut file = File::create(
-            function_dir.join(fn_decl.name)
-            .with_extension("mcfunction")).map_err(|err| {
-            eprintln!("ERROR: could not create function declaration file `{}`: {err}", fn_decl.name);
-        }
+        let mut file =
+            File::create(function_dir.join(fn_decl.name)
+                .with_extension("mcfunction"))
+                .map_err(|err| {
+                    eprintln!("ERROR: could not create function declaration file `{}`: {err}", fn_decl.name);
+                }
             )?;
 
         let _ = compile_fn_decl(syntax, &mut file, fn_decl).map_err(|err| {
