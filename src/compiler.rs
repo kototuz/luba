@@ -9,14 +9,15 @@ fn write_premain(main: &mut File) -> IOResult<()> {
     let _ = writeln!(main, "# premain")?;
     let _ = writeln!(main, "scoreboard objectives add r0 dummy")?;
     let _ = writeln!(main, "scoreboard objectives add r1 dummy")?;
+    let _ = writeln!(main, "data modify storage mcs local append value {{}}")?;
     Ok(())
 }
 
 fn write_postmain(main: &mut File) -> IOResult<()> {
     let _ = writeln!(main, "\n# postmain")?;
-    let _ = writeln!(main, "data remove mcs local")?;
-    let _ = writeln!(main, "data remove mcs stack")?;
-    let _ = writeln!(main, "data remove mcs return")?;
+    let _ = writeln!(main, "data remove storage mcs local")?;
+    let _ = writeln!(main, "data remove storage mcs stack")?;
+    let _ = writeln!(main, "data remove storage mcs return")?;
     Ok(())
 }
 
@@ -79,7 +80,7 @@ fn compile_expr(
                         }
                         let _ = writeln!(fn_file, "function test:{name}")?;
                         let _ = writeln!(fn_file, "data remove storage mcs local[-1]")?;
-                        let _ = writeln!(fn_file, "data modify storage mcs {to_var} set from storage mcs result")?;
+                        let _ = writeln!(fn_file, "data modify storage mcs {to_var} set from storage mcs return")?;
                     },
 
                     _ => unreachable!()

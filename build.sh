@@ -1,9 +1,14 @@
 mkdir -p ./bin/
 
 case "$1" in
-    "run")
+    "example-vars")
         rustc -o ./bin/mcs -g ./src/main.rs
-        ./bin/mcs example.mcs
+        ./bin/mcs examples/vars
+        ;;
+
+    "example-funcs")
+        rustc -o ./bin/mcs -g ./src/main.rs
+        ./bin/mcs examples/functions
         ;;
 
     "test")

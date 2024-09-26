@@ -1,0 +1,8 @@
+fn sum(a, b) { return a + b; }
+fn sub(a, b) { return a - b; }
+fn mul(a, b) { return a * b; }
+fn div(a, b) { return a / b; }
+
+fn main() {
+    res = sum(10, div(mul(3, 4), 6));
+}
