@@ -19,10 +19,10 @@ fn compile_expr(
     if exprs.len() == 1 {
         match exprs[0] {
             Expr::Var(name) => {
-                let _ = writeln!(fn_file, "data modify storage mcs local[-1].{to_var} set from storage mcs local[-1].{name}")?;
+                let _ = writeln!(fn_file, "data modify storage mcs {to_var} set from storage mcs local[-1].{name}")?;
             },
             Expr::Num(n) => {
-                let _ = writeln!(fn_file, "data modify storage mcs local[-1].{to_var} set value {n}")?;
+                let _ = writeln!(fn_file, "data modify storage mcs {to_var} set value {n}")?;
             },
             _ => unreachable!()
         }
@@ -35,7 +35,7 @@ fn compile_expr(
                     Expr::OpAdd => {
                         let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                         let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
-                        let _ = writeln!(fn_file, "execute store result storage mcs local[-1].{to_var} int 1 run scoreboard players operation accum r0 += accum r1")?;
+                        let _ = writeln!(fn_file, "execute store result storage mcs {to_var} int 1 run scoreboard players operation accum r0 += accum r1")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     }
@@ -43,7 +43,7 @@ fn compile_expr(
                     Expr::OpSub  => {
                         let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                         let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
-                        let _ = writeln!(fn_file, "execute store result storage mcs local[-1].{to_var} int 1 run scoreboard players operation accum r0 -= accum r1")?;
+                        let _ = writeln!(fn_file, "execute store result storage mcs {to_var} int 1 run scoreboard players operation accum r0 -= accum r1")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     },
@@ -51,7 +51,7 @@ fn compile_expr(
                     Expr::OpMul  => {
                         let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                         let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
-                        let _ = writeln!(fn_file, "execute store result storage mcs local[-1].{to_var} int 1 run scoreboard players operation accum r0 *= accum r1")?;
+                        let _ = writeln!(fn_file, "execute store result storage mcs {to_var} int 1 run scoreboard players operation accum r0 *= accum r1")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     },
@@ -59,7 +59,7 @@ fn compile_expr(
                     Expr::OpDiv  => {
                         let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                         let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
-                        let _ = writeln!(fn_file, "execute store result storage mcs local[-1].{to_var} int 1 run scoreboard players operation accum r0 /= accum r1")?;
+                        let _ = writeln!(fn_file, "execute store result storage mcs {to_var} int 1 run scoreboard players operation accum r0 /= accum r1")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     },
@@ -70,7 +70,7 @@ fn compile_expr(
                         }
                         let _ = writeln!(fn_file, "function test:{name}")?;
                         let _ = writeln!(fn_file, "data remove storage mcs local[-1]")?;
-                        let _ = writeln!(fn_file, "data modify storage mcs local[-1].{to_var} set from storage mcs result")?;
+                        let _ = writeln!(fn_file, "data modify storage mcs {to_var} set from storage mcs result")?;
                     },
 
                     _ => unreachable!()
@@ -184,23 +184,12 @@ fn compile_fn_decl(
             // TODO: refactor the expression generation (specifically that pattern `12341234123+++++---++`)
             Stmt::VarAssign { name, expr } => {
                 let _ = writeln!(fn_file, "\n# assign var `{}`", name)?;
-                let _ = compile_expr(fn_file, &syntax.exprs[expr.clone()], name)?;
+                let _ = compile_expr(fn_file, &syntax.exprs[expr.clone()], format!("local[-1].{name}").as_str())?;
             },
 
-            Stmt::Return(expr) => {
-                match expr {
-                    Expr::Num(z) => {
-                        let _ = writeln!(fn_file, "data modify storage mcs return set value {z}")?;
-                        let _ = writeln!(fn_file, "return 1")?;
-                    },
-
-                    Expr::Var(n) => {
-                        let _ = writeln!(fn_file, "data modify storage mcs return set from storage mcs local[-1].{n}")?;
-                        let _ = writeln!(fn_file, "return 1")?;
-                    },
-
-                    _ => unreachable!()
-                }
+            Stmt::Return(expr_range) => {
+                let _ = compile_expr(fn_file, &syntax.exprs[expr_range.clone()], "return")?;
+                let _ = writeln!(fn_file, "return 1")?;
             },
         }
     }

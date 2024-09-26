@@ -3,10 +3,12 @@ use std::ops::Range;
 use lexer::*;
 use super::Result;
 
+type ExprRange = Range<usize>;
+
 #[derive(Debug)]
 pub enum Stmt<'a> {
-    VarAssign { name: &'a str, expr: Range<usize> },
-    Return(Expr<'a>), // TODO: full capabilities of expressions
+    VarAssign { name: &'a str, expr: ExprRange },
+    Return(ExprRange),
 }
 
 type Block = Range<usize>;
@@ -82,20 +84,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Syntax<'a>> {
                 },
 
                 TokenKind::KeywordReturn => {
-                    let token = lex.expect_next_oneof(&[
-                        TokenKind::Name,
-                        TokenKind::Num
-                    ])?;
-                    let _ = lex.expect_next(TokenKind::Semicolon);
-                    ret.stmts.push(Stmt::Return(
-                        match token.kind {
-                            TokenKind::Name => Expr::Var(token.text),
-                            TokenKind::Num  => Expr::Num(
-                                token.text.parse::<i32>().unwrap()
-                            ),
-                            _ => unreachable!()
-                        }
-                    ));
+                    ret.stmts.push(Stmt::Return(parse_expr(&mut ret.exprs, lex)?));
                     fn_decl.body.end += 1;
                 },
 
@@ -113,10 +102,10 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Syntax<'a>> {
 pub fn parse_expr<'a>(
     expr_buf: &mut Vec<Expr<'a>>,
     lex: &mut Lexer<'a>,
-) -> Result<Range<usize>> {
+) -> Result<ExprRange> {
     // the implementation based on: https://en.wikipedia.org/wiki/Shunting_yard_algorithm
 
-    let mut ret = Range { start: expr_buf.len(), end: 0 };
+    let mut ret = ExprRange { start: expr_buf.len(), end: 0 };
     let mut op_stack: Vec<Expr> = Vec::new();
 
     //expr_buf.push(expect_read_expr(lex, &mut op_stack)?);
