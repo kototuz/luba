@@ -34,3 +34,7 @@ fn main() -> ExitCode {
         Ok(_)  => ExitCode::SUCCESS,
     }
 }
+
+
+
+// TODO: add something like that: `native!("say $var0")`
