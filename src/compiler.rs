@@ -6,8 +6,17 @@ use super::Result;
 use super::parser::*;
 
 fn write_premain(main: &mut File) -> IOResult<()> {
+    let _ = writeln!(main, "# premain")?;
     let _ = writeln!(main, "scoreboard objectives add r0 dummy")?;
     let _ = writeln!(main, "scoreboard objectives add r1 dummy")?;
+    Ok(())
+}
+
+fn write_postmain(main: &mut File) -> IOResult<()> {
+    let _ = writeln!(main, "\n# postmain")?;
+    let _ = writeln!(main, "data remove mcs local")?;
+    let _ = writeln!(main, "data remove mcs stack")?;
+    let _ = writeln!(main, "data remove mcs return")?;
     Ok(())
 }
 
@@ -175,6 +184,7 @@ fn compile_fn_decl(
 ) -> IOResult<()> {
     if fn_decl.name == "main" { let _ = write_premain(fn_file)?; }
 
+    if fn_decl.params.len() > 0 { let _ = writeln!(fn_file, "# parameters")?; }
     for (i, param) in fn_decl.params.iter().enumerate() {
         let _ = writeln!(fn_file, "data modify storage mcs local[-1].{param} set from storage mcs local[-1].{i}")?;
     }
@@ -188,11 +198,15 @@ fn compile_fn_decl(
             },
 
             Stmt::Return(expr_range) => {
+                let _ = writeln!(fn_file, "\n# return")?;
                 let _ = compile_expr(fn_file, &syntax.exprs[expr_range.clone()], "return")?;
                 let _ = writeln!(fn_file, "return 1")?;
             },
         }
     }
+
+    if fn_decl.name == "main" { let _ = write_postmain(fn_file)?; }
+
     Ok(())
 }
 
