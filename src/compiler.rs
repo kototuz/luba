@@ -198,7 +198,7 @@ fn compile_expr(
 }
 
 fn compile_fn_decl(
-    syntax: &Syntax,
+    syntax: &Program,
     fn_file: &mut File,
     fn_decl: &FnDecl
 ) -> IOResult<()> {
@@ -230,7 +230,7 @@ fn compile_fn_decl(
     Ok(())
 }
 
-pub fn compile(syntax: &Syntax) -> Result<()> {
+pub fn compile(syntax: &Program) -> Result<()> {
     let function_dir = std::env::current_dir().map_err(|err| {
         eprintln!("ERROR: could not get current directory: {err}");
     })?.join("function");

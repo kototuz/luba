@@ -32,14 +32,14 @@ pub enum Expr<'a> {
     Num(i32),
 }
 
-pub struct Syntax<'a> {
+pub struct Program<'a> {
     pub exprs: Vec<Expr<'a>>,
     pub stmts: Vec<Stmt<'a>>,
     pub fns:   Vec<FnDecl<'a>>
 }
 
-pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Syntax<'a>> {
-    let mut ret = Syntax {
+pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
+    let mut ret = Program {
         exprs: Vec::new(),
         stmts: Vec::new(),
         fns:   Vec::new(),
@@ -262,7 +262,7 @@ mod tests {
     fn test_parse_expr() {
         use super::Expr::*;
 
-        // Syntax: v1;v2;op
+        // Program: v1;v2;op
         // 1 + 2          =>   12+
         // 1 + 2 + 3      =>   12+ 3 +
         // 1 + 2*3        =>   1 23* +
