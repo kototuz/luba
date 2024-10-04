@@ -21,28 +21,68 @@ fn write_postmain(main: &mut File) -> IOResult<()> {
     Ok(())
 }
 
+enum WriteTarget<'a> {
+    R0,
+    R1,
+    Var(&'a str),
+    None
+}
+
 fn compile_expr(
     fn_file: &mut File,
     exprs: &[Expr],
-    to_var: &str,
+    write_target: WriteTarget
 ) -> IOResult<()> {
     let mut i = 0;
     let mut local_scope_offset = 1;
     while i < exprs.len() {
         if i == exprs.len()-1 {
             match exprs[i] {
-                Expr::Var(name) => {
-                    let _ = writeln!(fn_file, "data modify storage {to_var} set from storage mcs local[-1].{name}")?;
+                Expr::Var(from) => {
+                    match write_target {
+                        WriteTarget::Var(to) => {
+                            let _ = writeln!(fn_file, "data modify storage mcs {to} set from storage mcs local[-1].{from}")?;
+                        },
+                        WriteTarget::R0 => {
+                            let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs local[-1].{from}")?;
+                        },
+                        WriteTarget::R1 => {
+                            let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs local[-1].{from}")?;
+                        },
+                        WriteTarget::None => {}
+                    }
                 },
 
                 Expr::Num(num) => {
-                    let _ = writeln!(fn_file, "data modify storage {to_var} set value {num}")?;
+                    match write_target {
+                        WriteTarget::Var(to) => {
+                            let _ = writeln!(fn_file, "data modify storage mcs {to} set value {num}")?;
+                        },
+                        WriteTarget::R0 => {
+                            let _ = writeln!(fn_file, "scoreboard players set accum r0 {num}")?;
+                        },
+                        WriteTarget::R1 => {
+                            let _ = writeln!(fn_file, "scoreboard players set accum r1 {num}")?;
+                        },
+                        WriteTarget::None => {}
+                    }
                 },
 
                 Expr::OpAdd => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
-                    let _ = writeln!(fn_file, "execute store result storage mcs {to_var} int 1 run scoreboard players operation accum r0 += accum r1")?;
+                    match write_target {
+                        WriteTarget::Var(to) => {
+                            let _ = writeln!(fn_file, "execute store result storage mcs {to} int 1 run scoreboard players operation accum r0 += accum r1")?;
+                        },
+                        WriteTarget::R0 => {
+                            let _ = writeln!(fn_file, "scoreboard players operation accum r0 += accum r1")?;
+                        },
+                        WriteTarget::R1 => {
+                            let _ = writeln!(fn_file, "scoreboard players operation accum r1 += accum r0")?;
+                        },
+                        WriteTarget::None => {}
+                    }
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 }
@@ -50,7 +90,18 @@ fn compile_expr(
                 Expr::OpSub  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
-                    let _ = writeln!(fn_file, "execute store result storage mcs {to_var} int 1 run scoreboard players operation accum r0 -= accum r1")?;
+                    match write_target {
+                        WriteTarget::Var(to) => {
+                            let _ = writeln!(fn_file, "execute store result storage mcs {to} int 1 run scoreboard players operation accum r0 -= accum r1")?;
+                        },
+                        WriteTarget::R0 => {
+                            let _ = writeln!(fn_file, "scoreboard players operation accum r0 -= accum r1")?;
+                        },
+                        WriteTarget::R1 => {
+                            let _ = writeln!(fn_file, "execute store result score accum r1 run scoreboard players operation accum r0 -= accum r1")?;
+                        },
+                        WriteTarget::None => {}
+                    }
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 },
@@ -58,7 +109,18 @@ fn compile_expr(
                 Expr::OpMul  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
-                    let _ = writeln!(fn_file, "execute store result storage mcs {to_var} int 1 run scoreboard players operation accum r0 *= accum r1")?;
+                    match write_target {
+                        WriteTarget::Var(to) => {
+                            let _ = writeln!(fn_file, "execute store result storage mcs {to} int 1 run scoreboard players operation accum r0 *= accum r1")?;
+                        },
+                        WriteTarget::R0 => {
+                            let _ = writeln!(fn_file, "scoreboard players operation accum r0 *= accum r1")?;
+                        },
+                        WriteTarget::R1 => {
+                            let _ = writeln!(fn_file, "execute store result score accum r1 run scoreboard players operation accum r0 *= accum r1")?;
+                        },
+                        WriteTarget::None => {}
+                    }
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 },
@@ -66,7 +128,18 @@ fn compile_expr(
                 Expr::OpDiv  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
-                    let _ = writeln!(fn_file, "execute store result storage mcs {to_var} int 1 run scoreboard players operation accum r0 /= accum r1")?;
+                    match write_target {
+                        WriteTarget::Var(to) => {
+                            let _ = writeln!(fn_file, "execute store result storage mcs {to} int 1 run scoreboard players operation accum r0 /= accum r1")?;
+                        },
+                        WriteTarget::R0 => {
+                            let _ = writeln!(fn_file, "scoreboard players operation accum r0 /= accum r1")?;
+                        },
+                        WriteTarget::R1 => {
+                            let _ = writeln!(fn_file, "execute store result score accum r1 run scoreboard players operation accum r0 /= accum r1")?;
+                        },
+                        WriteTarget::None => {}
+                    }
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 },
@@ -77,7 +150,18 @@ fn compile_expr(
                     }
                     let _ = writeln!(fn_file, "function test:{name}")?;
                     let _ = writeln!(fn_file, "data remove storage mcs local[-1]")?;
-                    let _ = writeln!(fn_file, "data modify storage mcs {to_var} set from storage mcs return")?;
+                    match write_target {
+                        WriteTarget::Var(to) => {
+                            let _ = writeln!(fn_file, "data modify storage mcs {to} set from storage mcs return")?;
+                        },
+                        WriteTarget::R0 => {
+                            let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs return")?;
+                        },
+                        WriteTarget::R1 => {
+                            let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs return")?;
+                        },
+                        WriteTarget::None => {}
+                    }
                 },
 
                 _ => unreachable!()
@@ -197,66 +281,101 @@ fn compile_expr(
     Ok(())
 }
 
-fn compile_fn_decl(
-    syntax: &Program,
+fn compile_block(
+    program: &Program,
+    fn_decl: &FnDecl,
     fn_file: &mut File,
-    fn_decl: &FnDecl
+    block_idx: usize,
 ) -> IOResult<()> {
-    if fn_decl.name == "main" { let _ = write_premain(fn_file)?; }
-
-    if fn_decl.params.len() > 0 { let _ = writeln!(fn_file, "# parameters")?; }
-    for (i, param) in fn_decl.params.iter().enumerate() {
-        let _ = writeln!(fn_file, "data modify storage mcs local[-1].{param} set from storage mcs local[-1].{i}")?;
-    }
-
-    for stmt_i in fn_decl.body.clone() {
-        match &syntax.stmts[stmt_i] {
+    let mut range = program.blocks[fn_decl.blocks.start+block_idx].range.clone();
+    while range.start != range.end {
+        match &program.stmts[range.start] {
             // TODO: refactor the expression generation (specifically that pattern `12341234123+++++---++`)
             Stmt::VarAssign { name, expr } => {
                 let _ = writeln!(fn_file, "\n# assign var `{}`", name)?;
-                let _ = compile_expr(fn_file, &syntax.exprs[expr.clone()], format!("local[-1].{name}").as_str())?;
+                let name = format!("local[-1].{}", name);
+                let _ = compile_expr(fn_file, &program.exprs[expr.clone()], WriteTarget::Var(name.as_str()))?;
             },
 
             Stmt::Return(expr_range) => {
                 let _ = writeln!(fn_file, "\n# return")?;
-                let _ = compile_expr(fn_file, &syntax.exprs[expr_range.clone()], "return")?;
+                let _ = compile_expr(fn_file, &program.exprs[expr_range.clone()], WriteTarget::Var("return"))?;
                 let _ = writeln!(fn_file, "return 1")?;
             },
+
+            Stmt::If { cond, body } => {
+                let _ = writeln!(fn_file, "\n# if block")?;
+                let _ = compile_expr(fn_file, &program.exprs[cond.clone()], WriteTarget::R0)?;
+                let _ = writeln!(fn_file, "execute if score accum r0 matches 1.. store result score accum r0 run function test:{body}_{}", fn_decl.name)?;
+                let _ = writeln!(fn_file, "execute if score accum r0 matches 1 run return 1");
+                range.start = program.blocks[fn_decl.blocks.start + *body].range.end;
+                continue;
+            }
         }
+        range.start += 1;
     }
-
-    if fn_decl.name == "main" { let _ = write_postmain(fn_file)?; }
-
     Ok(())
 }
 
-pub fn compile(syntax: &Program) -> Result<()> {
-    let function_dir = std::env::current_dir().map_err(|err| {
-        eprintln!("ERROR: could not get current directory: {err}");
-    })?.join("function");
+pub fn compile(program: &Program) -> IOResult<()> {
+    let mut file_path: std::path::PathBuf;
+    { // creating the function directory
+        file_path = std::env::current_dir().inspect_err(|err| {
+            eprintln!("ERROR: could not get current directory: {err}");
+        })?.join("function");
 
-    if std::path::Path::exists(&function_dir) {
-        let _ = std::fs::remove_dir_all(&function_dir).map_err(|err| {
-            eprintln!("ERROR: could not clean `function` directory: {err}");
+        if std::path::Path::exists(&file_path) {
+            let _ = std::fs::remove_dir_all(&file_path).inspect_err(|err| {
+                eprintln!("ERROR: could not clean `function` directory: {err}");
+            })?;
+        } 
+
+        let _ = std::fs::create_dir_all(&file_path).inspect_err(|err| {
+            eprintln!("ERROR: could not create function dir: {err}");
         })?;
-    } 
+    }
 
-    let _ = std::fs::create_dir_all(&function_dir).map_err(|err| {
-        eprintln!("ERROR: could not create function dir: {err}");
-    })?;
+    file_path.push("olla");
+    for fn_decl in &program.fns {
+        file_path.set_file_name(fn_decl.name);
+        file_path.set_extension("mcfunction");
 
-    for fn_decl in &syntax.fns {
-        let mut file =
-            File::create(function_dir.join(fn_decl.name)
-                .with_extension("mcfunction"))
-                .map_err(|err| {
-                    eprintln!("ERROR: could not create function declaration file `{}`: {err}", fn_decl.name);
-                }
-            )?;
-
-        let _ = compile_fn_decl(syntax, &mut file, fn_decl).map_err(|err| {
-            eprintln!("ERROR: compilation failed: {err}");
+        let mut file = File::create(&file_path).inspect_err(|err| {
+            eprintln!("ERROR: could not create file `{}.mcfunction`: {err}", fn_decl.name);
         })?;
+
+        let _ = writeln!(file, "# parameters")?;
+        for (i, param) in fn_decl.params.iter().enumerate() {
+            writeln!(file, "data modify storage mcs local[-1].{param} set from storage mcs local[-1].{i}")
+                .inspect_err(|err| {
+                    eprintln!("ERROR: could not write file: {err}");
+                })?;
+        }
+
+        if fn_decl.name == "main" {
+            write_premain(&mut file).inspect_err(|err| {
+                eprintln!("ERROR: could not write premain: {err}");
+            })?;
+            let _ = compile_block(program, fn_decl, &mut file, 0)?;
+            write_postmain(&mut file).inspect_err(|err| {
+                eprintln!("ERROR: could not write postmain: {err}");
+            })?;
+        } else {
+            let _ = compile_block(program, fn_decl, &mut file, 0)?;
+        }
+
+        let mut i = 1;
+        let len = fn_decl.blocks.end - fn_decl.blocks.start;
+        while i < len {
+            file_path.set_file_name(format!("{}_{}", i, fn_decl.name));
+            file_path.set_extension("mcfunction");
+            file = File::create(&file_path).inspect_err(|err| {
+                eprintln!("ERROR: could not create function block file: {err}");
+            })?;
+            let _ = compile_block(program, fn_decl, &mut file, i)?;
+
+            i += 1;
+        }
     }
 
     Ok(())

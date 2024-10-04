@@ -4,18 +4,37 @@ use lexer::*;
 use super::Result;
 
 type ExprRange = Range<usize>;
+type StmtIdx =  usize;
+type BlockIdx = usize;
+type BlockRange = Range<BlockIdx>;
+
+#[derive(Debug)]
+pub struct Block {
+    parent: Option<BlockIdx>,
+    pub range: BlockRange
+}
 
 #[derive(Debug)]
 pub enum Stmt<'a> {
     VarAssign { name: &'a str, expr: ExprRange },
     Return(ExprRange),
+    If { cond: ExprRange, body: BlockIdx }
 }
 
-type Block = Range<usize>;
+// STMT_BUFFER:
+// if_block(cond: 1==1, block_len: 3)
+//   var_assign
+//   var_assign
+//   fn_call
+// if_block(cond: 1==1, block_len: 3)
+//   var_assign
+//   var_assign
+//   if_block(cond: 1==1, block_len: 3)
+// var_assign
 
 pub struct FnDecl<'a> {
     pub name: &'a str,
-    pub body: Block,
+    pub blocks: BlockRange, // blocks[0] - function body
     pub params: Vec<&'a str>
 }
 
@@ -33,9 +52,10 @@ pub enum Expr<'a> {
 }
 
 pub struct Program<'a> {
-    pub exprs: Vec<Expr<'a>>,
-    pub stmts: Vec<Stmt<'a>>,
-    pub fns:   Vec<FnDecl<'a>>
+    pub exprs:  Vec<Expr<'a>>,
+    pub stmts:  Vec<Stmt<'a>>,
+    pub fns:    Vec<FnDecl<'a>>,
+    pub blocks: Vec<Block>,
 }
 
 pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
@@ -43,8 +63,10 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
         exprs: Vec::new(),
         stmts: Vec::new(),
         fns:   Vec::new(),
+        blocks: Vec::new()
     };
 
+    let mut curr_block_idx = 0;
     while let Some(tok) = lex.next()? {
         if tok.kind != TokenKind::KeywordFn {
             eprintln!(
@@ -58,41 +80,91 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
         let mut fn_decl = FnDecl {
             name: lex.expect_next(TokenKind::Name)?.text,
             params: Vec::new(), // TODO: maybe make one param buffer for every `fn_decl`
-            body: Block { start: ret.stmts.len(), end: ret.stmts.len() }
+            blocks: BlockRange { start: ret.blocks.len(), end: 0 },
         };
 
-        let _ = lex.expect_next(TokenKind::OpenParen)?;
-        let mut tok = lex.expect_next_oneof(&[TokenKind::Name, TokenKind::CloseParen])?;
-        if tok.kind == TokenKind::Name {
-            fn_decl.params.push(tok.text);
-            tok = lex.expect_next_oneof(&[TokenKind::Comma, TokenKind::CloseParen])?;
-            while tok.kind == TokenKind::Comma {
-                fn_decl.params.push(lex.expect_next(TokenKind::Name)?.text);
+        ret.blocks.push(Block {
+            parent: None,
+            range: BlockRange {
+                start: ret.stmts.len(),
+                end: 0
+            }
+        });
+
+        { // reading parameters
+            let _ = lex.expect_next(TokenKind::OpenParen)?;
+            let mut tok = lex.expect_next_oneof(&[TokenKind::Name, TokenKind::CloseParen])?;
+            if tok.kind == TokenKind::Name {
+                fn_decl.params.push(tok.text);
                 tok = lex.expect_next_oneof(&[TokenKind::Comma, TokenKind::CloseParen])?;
+                while tok.kind == TokenKind::Comma {
+                    fn_decl.params.push(lex.expect_next(TokenKind::Name)?.text);
+                    tok = lex.expect_next_oneof(&[TokenKind::Comma, TokenKind::CloseParen])?;
+                }
             }
         }
-
 
         let _ = lex.expect_next(TokenKind::OpenCurly)?;
         while let Some(t) = lex.next()? {
             match t.kind {
                 TokenKind::Name => {
                     let _ = lex.expect_next(TokenKind::Eq)?;
-                    let expr = parse_expr(&mut ret.exprs, lex)?;
+                    let expr = parse_expr(&mut ret.exprs, lex, TokenKind::Semicolon)?;
                     ret.stmts.push(Stmt::VarAssign { name: t.text, expr });
-                    fn_decl.body.end += 1;
                 },
 
                 TokenKind::KeywordReturn => {
-                    ret.stmts.push(Stmt::Return(parse_expr(&mut ret.exprs, lex)?));
-                    fn_decl.body.end += 1;
+                    ret.stmts.push(Stmt::Return(parse_expr(&mut ret.exprs, lex, TokenKind::Semicolon)?));
                 },
 
-                TokenKind::CloseCurly => break,
+                // var
+                // var
+                // if
+                //   var
+                //   if
+                //     var
+                //     var
+                //   if
+                //     var
+                //     var
+                //     var
+                //     var
+                //   var
+                //   var
+                // var
+                TokenKind::KeywordIf => {
+                    let expr = parse_expr(&mut ret.exprs, lex, TokenKind::OpenCurly)?;
+                    ret.stmts.push(Stmt::If {
+                        cond: expr,
+                        body: ret.blocks.len() - fn_decl.blocks.start
+                    });
+
+                    ret.blocks.push(Block {
+                        parent: Some(curr_block_idx),
+                        range: BlockRange {
+                            start: ret.stmts.len(),
+                            end: 0
+                        }
+                    });
+
+                    curr_block_idx = ret.blocks.len()-1;
+                },
+
+                TokenKind::CloseCurly => {
+                    ret.blocks[curr_block_idx].range.end = ret.stmts.len();
+                    if let Some(parent_idx) = ret.blocks[curr_block_idx].parent {
+                        curr_block_idx = parent_idx;
+                    } else {
+                        break;
+                    }
+                },
+
                 _ => todo!()
             }
         }
 
+        curr_block_idx += 1;
+        fn_decl.blocks.end = ret.blocks.len();
         ret.fns.push(fn_decl);
     }
 
@@ -102,6 +174,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
 pub fn parse_expr<'a>(
     expr_buf: &mut Vec<Expr<'a>>,
     lex: &mut Lexer<'a>,
+    end_token: TokenKind
 ) -> Result<ExprRange> {
     // the implementation based on: https://en.wikipedia.org/wiki/Shunting_yard_algorithm
 
@@ -114,14 +187,14 @@ pub fn parse_expr<'a>(
         &[TokenKind::Name, TokenKind::Num, TokenKind::OpenParen];
     const READ_OR_CLOSE_PAREN: &[TokenKind] =
         &[TokenKind::Name, TokenKind::Num, TokenKind::OpenParen, TokenKind::CloseParen];
-    const OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON: &[TokenKind] = &[
+    let OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON: &[TokenKind] = &[
         TokenKind::Plus,
         TokenKind::Minus,
         TokenKind::Star,
         TokenKind::Slash,
         TokenKind::Comma,
         TokenKind::CloseParen,
-        TokenKind::Semicolon
+        end_token
     ];
 
     let mut token = lex.expect_next_oneof(READ)?;
@@ -234,7 +307,7 @@ pub fn parse_expr<'a>(
                 token = lex.expect_next_oneof(READ)?;
             },
 
-            TokenKind::Semicolon => break,
+            end_token => break,
 
             _ => unreachable!()
         }

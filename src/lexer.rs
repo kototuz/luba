@@ -37,6 +37,7 @@ pub enum TokenKind {
     CloseCurly,
     KeywordFn,
     KeywordReturn,
+    KeywordIf,
     Comma,
 }
 
@@ -118,6 +119,7 @@ impl<'a> Lexer<'a> {
 
             if text == "fn" { res_kind = TokenKind::KeywordFn }
             else if text == "return" { res_kind = TokenKind::KeywordReturn; }
+            else if text == "if" { res_kind = TokenKind::KeywordIf; }
             self.peeked = Some(Token { kind: res_kind, text });
         }
 
@@ -201,6 +203,7 @@ impl fmt::Display for TokenKind {
             TokenKind::OpenCurly     => "{",
             TokenKind::CloseCurly    => "}",
             TokenKind::Comma         => ",",
+            TokenKind::KeywordIf     => "if",
         })
     }
 }

@@ -22,8 +22,8 @@ fn main2() -> Result<()> {
     })?;
 
     let mut lexer = lexer::Lexer::new(buffer.as_bytes());
-    let syntax = parser::parse(&mut lexer)?;
-    let _ = compiler::compile(&syntax)?;
+    let program = parser::parse(&mut lexer)?;
+    let _ = compiler::compile(&program).map_err(|_| {})?;
 
     Ok(())
 }
