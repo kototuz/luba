@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use lexer::*;
-use super::Result;
+use super::{syntax_err, exit_failure};
 
 type ExprRange = Range<usize>;
 type StmtIdx =  usize;
@@ -40,15 +40,12 @@ pub struct FnDecl<'a> {
 
 #[derive(Debug, PartialEq)]
 pub enum Expr<'a> {
-    OpSub,
-    OpAdd,
-    OpMul,
-    OpDiv,
+    BinOp(BinOpKind),
     OpenParen,
     SetArg(u32),
     Var(&'a str),
     FnCall(&'a str),
-    Num(i32),
+    Num(i64),
 }
 
 pub struct Program<'a> {
@@ -58,7 +55,8 @@ pub struct Program<'a> {
     pub blocks: Vec<Block>,
 }
 
-pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
+
+pub fn parse<'a>(lex: &mut Lexer<'a>) -> Program<'a> {
     let mut ret = Program {
         exprs: Vec::new(),
         stmts: Vec::new(),
@@ -67,18 +65,13 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
     };
 
     let mut curr_block_idx = 0;
-    while let Some(tok) = lex.next()? {
-        if tok.kind != TokenKind::KeywordFn {
-            eprintln!(
-                "ERROR:{}: function declaration was expected, but found `{}`",
-                lex.loc,
-                tok.kind,
-            );
-            return Err(());
+    while let Some(token) = lex.next_any() {
+        if !matches!(token, Token::Keyword(Keyword::Fn)) {
+            lex.unexpected_token_err(token);
         }
 
         let mut fn_decl = FnDecl {
-            name: lex.expect_next(TokenKind::Name)?.text,
+            name: lex.expect_ident(),
             params: Vec::new(), // TODO: maybe make one param buffer for every `fn_decl`
             blocks: BlockRange { start: ret.blocks.len(), end: 0 },
         };
@@ -92,48 +85,45 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
         });
 
         { // reading parameters
-            let _ = lex.expect_next(TokenKind::OpenParen)?;
-            let mut tok = lex.expect_next_oneof(&[TokenKind::Name, TokenKind::CloseParen])?;
-            if tok.kind == TokenKind::Name {
-                fn_decl.params.push(tok.text);
-                tok = lex.expect_next_oneof(&[TokenKind::Comma, TokenKind::CloseParen])?;
-                while tok.kind == TokenKind::Comma {
-                    fn_decl.params.push(lex.expect_next(TokenKind::Name)?.text);
-                    tok = lex.expect_next_oneof(&[TokenKind::Comma, TokenKind::CloseParen])?;
-                }
+            lex.expect_punct(Punct::OpenParen);
+            match lex.expect_any() {
+                Token::Ident(text) => {
+                    fn_decl.params.push(text);
+                    loop {
+                        match lex.expect_any() {
+                            Token::Punct(Punct::Comma) => {
+                                fn_decl.params.push(lex.expect_ident())
+                            },
+                            Token::Punct(Punct::CloseParen) => break,
+                            t @ _ => lex.unexpected_token_err(t)
+                        }
+                    }
+                },
+                Token::Punct(Punct::CloseParen) => {},
+                t @ _ => lex.unexpected_token_err(t)
             }
         }
 
-        let _ = lex.expect_next(TokenKind::OpenCurly)?;
-        while let Some(t) = lex.next()? {
-            match t.kind {
-                TokenKind::Name => {
-                    let _ = lex.expect_next(TokenKind::Eq)?;
-                    let expr = parse_expr(&mut ret.exprs, lex, TokenKind::Semicolon)?;
-                    ret.stmts.push(Stmt::VarAssign { name: t.text, expr });
+        lex.expect_punct(Punct::OpenCurly);
+
+        while let Some(token) = lex.next_any() {
+            match token {
+                Token::Ident(text) => {
+                    lex.expect_punct(Punct::Eq);
+                    let expr = parse_expr(&mut ret.exprs, lex, Punct::Semicolon);
+                    ret.stmts.push(Stmt::VarAssign { name: text, expr });
                 },
 
-                TokenKind::KeywordReturn => {
-                    ret.stmts.push(Stmt::Return(parse_expr(&mut ret.exprs, lex, TokenKind::Semicolon)?));
+                Token::Keyword(Keyword::Return) => {
+                    ret.stmts.push(
+                        Stmt::Return(
+                            parse_expr(&mut ret.exprs, lex, Punct::Semicolon)
+                        )
+                    )
                 },
 
-                // var
-                // var
-                // if
-                //   var
-                //   if
-                //     var
-                //     var
-                //   if
-                //     var
-                //     var
-                //     var
-                //     var
-                //   var
-                //   var
-                // var
-                TokenKind::KeywordIf => {
-                    let expr = parse_expr(&mut ret.exprs, lex, TokenKind::OpenCurly)?;
+                Token::Keyword(Keyword::If) => {
+                    let expr = parse_expr(&mut ret.exprs, lex, Punct::OpenCurly);
                     ret.stmts.push(Stmt::If {
                         cond: expr,
                         body: ret.blocks.len() - fn_decl.blocks.start
@@ -150,7 +140,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
                     curr_block_idx = ret.blocks.len()-1;
                 },
 
-                TokenKind::CloseCurly => {
+                Token::Punct(Punct::CloseCurly) => {
                     ret.blocks[curr_block_idx].range.end = ret.stmts.len();
                     if let Some(parent_idx) = ret.blocks[curr_block_idx].parent {
                         curr_block_idx = parent_idx;
@@ -159,7 +149,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
                     }
                 },
 
-                _ => todo!()
+                t @ _ => lex.unexpected_token_err(t)
             }
         }
 
@@ -168,171 +158,169 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Result<Program<'a>> {
         ret.fns.push(fn_decl);
     }
 
-    Ok(ret)
+    ret
 }
-
 pub fn parse_expr<'a>(
     expr_buf: &mut Vec<Expr<'a>>,
     lex: &mut Lexer<'a>,
-    end_token: TokenKind
-) -> Result<ExprRange> {
+    end: Punct
+) -> ExprRange {
     // the implementation based on: https://en.wikipedia.org/wiki/Shunting_yard_algorithm
+
+    fn bin_op_prec(bin_op_kind: BinOpKind) -> u8 {
+        match bin_op_kind {
+            BinOpKind::Or  => 0,
+            BinOpKind::And => 1,
+            BinOpKind::Eq  | BinOpKind::Ne  => 2,
+            BinOpKind::Gt
+            | BinOpKind::Ge
+            | BinOpKind::Lt
+            | BinOpKind::Le => 3,
+            BinOpKind::Add | BinOpKind::Sub => 4,
+            BinOpKind::Mul | BinOpKind::Div => 5,
+        }
+    }
 
     let mut ret = ExprRange { start: expr_buf.len(), end: 0 };
     let mut op_stack: Vec<Expr> = Vec::new();
-
-    //expr_buf.push(expect_read_expr(lex, &mut op_stack)?);
-
-    const READ: &[TokenKind] = 
-        &[TokenKind::Name, TokenKind::Num, TokenKind::OpenParen];
-    const READ_OR_CLOSE_PAREN: &[TokenKind] =
-        &[TokenKind::Name, TokenKind::Num, TokenKind::OpenParen, TokenKind::CloseParen];
-    let OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON: &[TokenKind] = &[
-        TokenKind::Plus,
-        TokenKind::Minus,
-        TokenKind::Star,
-        TokenKind::Slash,
-        TokenKind::Comma,
-        TokenKind::CloseParen,
-        end_token
-    ];
-
-    let mut token = lex.expect_next_oneof(READ)?;
+    
     loop {
-        match token.kind {
-            TokenKind::OpenParen => {
-                while token.kind == TokenKind::OpenParen {
+        loop {
+            match lex.expect_any() {
+                Token::Ident(text) => {
+                    expr_buf.push(Expr::Var(text));
+                    break;
+                },
+                Token::Number(num) => {
+                    expr_buf.push(Expr::Num(num));
+                    break;
+                },
+                Token::Punct(Punct::OpenParen) => {
                     op_stack.push(Expr::OpenParen);
-                    token = lex.expect_next_oneof(READ)?;
-                }
-            },
-
-            // f(1, f(2 + 3)) => 1s(0)23+s(0)fs(1)f
-            // stack:
-            TokenKind::Name => {
-                if let Some(Token { kind: TokenKind::OpenParen, .. }) = lex.peek()? {
-                    op_stack.push(Expr::FnCall(token.text));
-                    op_stack.push(Expr::OpenParen);
-                    let _ = lex.next();
-                    token = lex.expect_next_oneof(READ_OR_CLOSE_PAREN)?;
-                    if token.kind != TokenKind::CloseParen {
-                        op_stack.push(Expr::SetArg(0));
-                    }
-                } else {
-                    expr_buf.push(Expr::Var(token.text));
-                    token = lex.expect_next_oneof(OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON)?;
-                }
-            },
-
-            TokenKind::Num  => {
-                expr_buf.push(Expr::Num(token.text.parse::<i32>().unwrap()));
-                token = lex.expect_next_oneof(OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON)?;
-            },
-
-            TokenKind::CloseParen => {
-                while op_stack.last() != Some(&Expr::OpenParen) {
-                    expr_buf.push(op_stack.pop().unwrap());
-                    if op_stack.is_empty() {
-                        eprintln!("ERROR:{}: mismatched parentheses", lex.loc);
-                        return Err(());
-                    }
-                }
-
-                let _ = op_stack.pop();
-                if matches!(op_stack.last(), Some(&Expr::FnCall(_))) {
-                    expr_buf.push(op_stack.pop().unwrap());
-                }
-
-                token = lex.expect_next_oneof(OPERATIONS_OR_CLOSE_PAREN_OR_SEMICOLON)?;
-            },
-
-            TokenKind::Comma => {
-                loop {
-                    if let Some(&Expr::SetArg(i)) = op_stack.last() {
-                        expr_buf.push(op_stack.pop().unwrap());
-                        op_stack.push(Expr::SetArg(i+1));
-                        break;
-                    } else {
-                        expr_buf.push(op_stack.pop().unwrap());
-                        if op_stack.is_empty() {
-                            eprintln!("ERROR:{}: unexpected `,`", lex.loc);
-                            return Err(())
+                },
+                Token::Punct(Punct::CloseParen) => {
+                    if let Some(Expr::OpenParen) = op_stack.pop() {
+                        if let Some(Expr::FnCall(name)) = op_stack.pop() {
+                            expr_buf.push(Expr::FnCall(name));
+                            break;
                         }
                     }
-                }
-                token = lex.expect_next_oneof(READ)?;
-            },
+                    lex.unexpected_token_err(Token::Punct(Punct::CloseParen));
+                },
+                t @ _ => lex.unexpected_token_err(t)
+            }
+        }
 
-            TokenKind::Plus => {
-                while let Some(op) = op_stack.last() {
-                    if *op == Expr::OpenParen { break; }
-                    expr_buf.push(op_stack.pop().unwrap());
-                }
-                op_stack.push(Expr::OpAdd);
-                token = lex.expect_next_oneof(READ)?;
-            },
+        'outer: loop {
+            match lex.expect_any() {
+                Token::Punct(Punct::Comma) => {
+                    loop {
+                        match op_stack.last() {
+                            Some(&Expr::OpenParen) => {
+                                if op_stack.len() < 2 || !matches!(
+                                    op_stack.get(op_stack.len()-2),
+                                    Some(Expr::FnCall(_))
+                                ) {
+                                    lex.unexpected_token_err(Token::Punct(Punct::Comma));
+                                }
+                                expr_buf.push(Expr::SetArg(0));
+                                op_stack.push(Expr::SetArg(1));
+                                break 'outer;
+                            },
 
-            TokenKind::Minus => {
-                while let Some(op) = op_stack.last() {
-                    if *op == Expr::OpenParen { break; }
-                    expr_buf.push(op_stack.pop().unwrap());
-                }
-                op_stack.push(Expr::OpSub);
-                token = lex.expect_next_oneof(READ)?;
-            },
+                            Some(&Expr::SetArg(idx)) => {
+                                expr_buf.push(op_stack.pop().unwrap());
+                                op_stack.push(Expr::SetArg(idx+1));
+                                break 'outer;
+                            },
 
-            TokenKind::Star => {
-                while let Some(op) = op_stack.last() {
-                    match op {
-                        Expr::OpMul | Expr::OpDiv => {
-                            expr_buf.push(op_stack.pop().unwrap());
-                        },
-                        _ => break
+                            Some(_) => expr_buf.push(op_stack.pop().unwrap()),
+                            None => lex.unexpected_token_err(Token::Punct(Punct::Comma))
+                        }
                     }
-                }
-                op_stack.push(Expr::OpMul);
-                token = lex.expect_next_oneof(READ)?;
-            },
+                },
 
-            TokenKind::Slash => {
-                while let Some(op) = op_stack.last() {
-                    match op {
-                        Expr::OpMul | Expr::OpDiv => {
-                            expr_buf.push(op_stack.pop().unwrap());
-                        },
-                        _ => break
+                Token::Punct(Punct::OpenParen) => {
+                    let Some(Expr::Var(name)) = expr_buf.pop()
+                    else {
+                        lex.unexpected_token_err(Token::Punct(Punct::OpenParen));
+                    };
+                    op_stack.push(Expr::FnCall(name));
+                    op_stack.push(Expr::OpenParen);
+                    break;
+                },
+
+                Token::BinOp(kind0) => {
+                    while let Some(Expr::BinOp(kind1)) = op_stack.last() {
+                        if bin_op_prec(kind1.clone()) < bin_op_prec(kind0.clone()) {
+                            break;
+                        }
+                        expr_buf.push(op_stack.pop().unwrap());
                     }
-                }
-                op_stack.push(Expr::OpDiv);
-                token = lex.expect_next_oneof(READ)?;
-            },
+                    op_stack.push(Expr::BinOp(kind0.clone()));
+                    break;
+                },
 
-            end_token => break,
+                Token::Punct(Punct::CloseParen) => {
+                    while op_stack.last() != Some(&Expr::OpenParen) {
+                        if op_stack.is_empty() {
+                            syntax_err!(lex.loc, "Mismatched parentheses");
+                        }
+                        expr_buf.push(op_stack.pop().unwrap());
+                    }
 
-            _ => unreachable!()
+                    let _ = op_stack.pop();
+                    if matches!(op_stack.last(), Some(&Expr::FnCall(_))) {
+                        expr_buf.push(op_stack.pop().unwrap());
+                    }
+                },
+
+                Token::Punct(end) => {
+                    op_stack.reverse();
+                    for op in &op_stack {
+                        if *op == Expr::OpenParen {
+                            syntax_err!(lex.loc, "Mismatched parentheses");
+                        }
+                    }
+
+                    expr_buf.append(&mut op_stack);
+                    ret.end = expr_buf.len();
+                    return ret;
+                },
+
+                t @ _ => lex.unexpected_token_err(t)
+            }
         }
     }
-
-    op_stack.reverse();
-    for op in &op_stack {
-        if *op == Expr::OpenParen {
-            eprintln!("ERROR:{}: mismatched parentheses", lex.loc);
-            return Err(());
-        }
-    }
-
-    expr_buf.append(&mut op_stack);
-    ret.end = expr_buf.len();
-    Ok(ret)
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_expr() {
+    #[should_panic]
+    fn mismatched_parentheses() {
+        let mut expr_buf: Vec<Expr> = Vec::new();
+        let range = parse_expr(&mut expr_buf, &mut Lexer::new(b"(a));"), Punct::Semicolon);
+    }
+
+    #[test]
+    #[should_panic]
+    fn unexpected_comma() {
+        let mut expr_buf: Vec<Expr> = Vec::new();
+        let range = parse_expr(&mut expr_buf, &mut Lexer::new(b"(a + a,b);"), Punct::Semicolon);
+    }
+
+    #[test]
+    #[should_panic]
+    fn unexpected_paren() {
+        let mut expr_buf: Vec<Expr> = Vec::new();
+        let range = parse_expr(&mut expr_buf, &mut Lexer::new(b"a + ();"), Punct::Semicolon);
+    }
+
+    #[test]
+    fn expr() {
         use super::Expr::*;
 
         // Program: v1;v2;op
@@ -348,28 +336,31 @@ mod tests {
         // 1 / 2 * 3 / 4  =>   12/ 3* 4/
         // f(1, f(2 + 3)); => 1 23+ sa f sa sa
         let map: &[(&str, &[Expr])] = &[
+            ("1 + 2 == 3 - 1;", &[Num(1), Num(2), BinOp(BinOpKind::Add), Num(3), Num(1), BinOp(BinOpKind::Sub), BinOp(BinOpKind::Eq)]),
             ("f();",           &[FnCall("f")]),
             ("f(1, 2);",       &[Num(1), SetArg(0), Num(2), SetArg(1), FnCall("f")]),
+            ("f(1, 2 + 3);",   &[Num(1), SetArg(0), Num(2), Num(3), BinOp(BinOpKind::Add), SetArg(1), FnCall("f")]),
             ("f(1, f(2, 3));", &[Num(1), SetArg(0), Num(2), SetArg(0), Num(3), SetArg(1), FnCall("f"), SetArg(1), FnCall("f")]),
+            ("f(1, f(2, 3 + 4));", &[Num(1), SetArg(0), Num(2), SetArg(0), Num(3), Num(4), BinOp(BinOpKind::Add), SetArg(1), FnCall("f"), SetArg(1), FnCall("f")]),
             ("f(f(1, 2), f(3, 4));", &[Num(1), SetArg(0), Num(2), SetArg(1), FnCall("f"), SetArg(0), Num(3), SetArg(0), Num(4), SetArg(1), FnCall("f"), SetArg(1), FnCall("f")]),
-            ("1 + 2;",         &[Num(1), Num(2), OpAdd]),
-            ("1 + 2 + 3;",     &[Num(1), Num(2), OpAdd, Num(3), OpAdd]),
-            ("1 + 2*3;",       &[Num(1), Num(2), Num(3), OpMul, OpAdd]),
-            ("1 * 2 * 3;",     &[Num(1), Num(2), OpMul, Num(3), OpMul]),
-            ("1 + 2*3*4;",     &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd]),
-            ("1 + 2*3*4 + 5;", &[Num(1), Num(2), Num(3), OpMul, Num(4), OpMul, OpAdd, Num(5), OpAdd]),
-            ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), OpMul, OpAdd, Num(4), Num(5), OpMul, OpAdd]),
-            ("1 / 2 * 3;",     &[Num(1), Num(2), OpDiv, Num(3), OpMul]),
-            ("1 / 2 * 3 * 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpMul]),
-            ("1 / 2 * 3 / 4;", &[Num(1), Num(2), OpDiv, Num(3), OpMul, Num(4), OpDiv]),
-            ("1 * (2 + 3);",   &[Num(1), Num(2), Num(3), OpAdd, OpMul]),
-            ("1 * (2 + 3) + 2;",   &[Num(1), Num(2), Num(3), OpAdd, OpMul, Num(2), OpAdd]),
-            ("3 + 4 * 2 / (1 - 5);", &[Num(3), Num(4), Num(2), OpMul, Num(1), Num(5), OpSub, OpDiv, OpAdd])
+            ("1 + 2;",         &[Num(1), Num(2), BinOp(BinOpKind::Add)]),
+            ("1 + 2 + 3;",     &[Num(1), Num(2), BinOp(BinOpKind::Add), Num(3), BinOp(BinOpKind::Add)]),
+            ("1 + 2*3;",       &[Num(1), Num(2), Num(3), BinOp(BinOpKind::Mul), BinOp(BinOpKind::Add)]),
+            ("1 * 2 * 3;",     &[Num(1), Num(2), BinOp(BinOpKind::Mul), Num(3), BinOp(BinOpKind::Mul)]),
+            ("1 + 2*3*4;",     &[Num(1), Num(2), Num(3), BinOp(BinOpKind::Mul), Num(4), BinOp(BinOpKind::Mul), BinOp(BinOpKind::Add)]),
+            ("1 + 2*3*4 + 5;", &[Num(1), Num(2), Num(3), BinOp(BinOpKind::Mul), Num(4), BinOp(BinOpKind::Mul), BinOp(BinOpKind::Add), Num(5), BinOp(BinOpKind::Add)]),
+            ("1 + 2*3 + 4*5;", &[Num(1), Num(2), Num(3), BinOp(BinOpKind::Mul), BinOp(BinOpKind::Add), Num(4), Num(5), BinOp(BinOpKind::Mul), BinOp(BinOpKind::Add)]),
+            ("1 / 2 * 3;",     &[Num(1), Num(2), BinOp(BinOpKind::Div), Num(3), BinOp(BinOpKind::Mul)]),
+            ("1 / 2 * 3 * 4;", &[Num(1), Num(2), BinOp(BinOpKind::Div), Num(3), BinOp(BinOpKind::Mul), Num(4), BinOp(BinOpKind::Mul)]),
+            ("1 / 2 * 3 / 4;", &[Num(1), Num(2), BinOp(BinOpKind::Div), Num(3), BinOp(BinOpKind::Mul), Num(4), BinOp(BinOpKind::Div)]),
+            ("1 * (2 + 3);",   &[Num(1), Num(2), Num(3), BinOp(BinOpKind::Add), BinOp(BinOpKind::Mul)]),
+            ("1 * (2 + 3) + 2;",   &[Num(1), Num(2), Num(3), BinOp(BinOpKind::Add), BinOp(BinOpKind::Mul), Num(2), BinOp(BinOpKind::Add)]),
+            ("3 + 4 * 2 / (1 - 5);", &[Num(3), Num(4), Num(2), BinOp(BinOpKind::Mul), Num(1), Num(5), BinOp(BinOpKind::Sub), BinOp(BinOpKind::Div), BinOp(BinOpKind::Add)])
         ];
 
         let mut exprs: Vec<Expr> = Vec::new();
         for test in map {
-            let range = parse_expr(&mut exprs, &mut Lexer::new(test.0.as_bytes())).unwrap();
+            let range = parse_expr(&mut exprs, &mut Lexer::new(test.0.as_bytes()), Punct::Semicolon);
             for x in range {
                 assert_eq!(exprs[x], test.1[x], "{:?}", test);
             }

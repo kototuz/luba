@@ -1,4 +1,29 @@
-use super::Result;
+use super::*;
+
+use std::mem::transmute;
+use std::collections::HashMap;
+
+
+
+// TODO: think about this way of lexering
+//
+//lex.expect_keyword(Keyword::If) {}
+//lex.expect_punct(Punct::OpenParen) {}
+//lex.expect_ident() -> &str {}
+//
+//lex.get_punct() -> Option<()>
+//lex.get_keyword() -> Option<()>
+//lex.get_ident() -> Option<&str>
+//
+//let (token, loc) = lex.expect_any();
+//match token {
+//    Token::BinOp(op_kind) => ...,
+//    Token::CloseParen => ...,
+//    Token::Keyword(Keyword::If) => ...,
+//    _ => lex.unexpected_token_err(loc, token)
+//}
+
+
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Loc {
@@ -10,170 +35,251 @@ pub struct Loc {
 pub struct Lexer<'a> {
     pub loc: Loc,
     src: &'a [u8],
-    curr: usize,
-    peeked: Option<Token>,
+    pos: usize,
+    curr_token_len: usize,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub text: &'static str
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum TokenKind {
-    Name,
-    StrLit,
-    Num,
+pub enum BinOpKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Gt,
+    Ge,
+    Lt,
+    Le,
     Eq,
-    Plus,
-    Minus,
-    Slash,
-    Star,
+    Ne,
+    And,
+    Or,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Keyword {
+    If,
+    Fn,
+    Return
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Punct {
     Semicolon,
+    Comma,
     OpenParen,
     CloseParen,
     OpenCurly,
     CloseCurly,
-    KeywordFn,
-    KeywordReturn,
-    KeywordIf,
-    Comma,
+    Eq,
 }
 
-
+#[derive(Debug, PartialEq, Clone)]
+pub enum Token {
+    Ident(&'static str),
+    StrLit(&'static str),
+    Number(i64),
+    BinOp(BinOpKind),
+    Keyword(Keyword),
+    Punct(Punct),
+}
 
 impl<'a> Lexer<'a> {
+    const KEYWORDS: &[(&'static str, Keyword)] = &[
+        ("if", Keyword::If),
+        ("fn", Keyword::Fn),
+        ("return", Keyword::Return),
+    ];
+
     pub fn new(src: &'a [u8]) -> Self {
         Self {
             src,
-            curr: 0,
-            peeked: None,
-            loc: Loc { row: 1, col: 0 }
+            pos: 0,
+            loc: Loc { row: 1, col: 1 },
+            curr_token_len: 0
         }
     }
 
-    pub fn peek(&mut self) -> Result<Option<Token>> {
-        if self.peeked.is_some() {
-            return Ok(self.peeked.clone());
+
+    fn ident(&mut self) -> Option<&'static str> {
+        if !self.src[self.pos].is_ascii_alphabetic() { return None; }
+        let mut end: usize = self.pos+1;
+        while end < self.src.len() &&
+            self.src[end].is_ascii_alphanumeric() { end += 1; }
+        let text = self.str_from_range(self.pos..end);
+        self.curr_token_len = text.len();
+        Some(text)
+    }
+
+    fn keyword(&mut self) -> Option<Keyword> {
+        let mut end: usize = self.pos+1;
+        while end < self.src.len() &&
+            !self.src[end].is_ascii_whitespace() {
+                end += 1;
         }
 
-        if self.curr == self.src.len() { return Ok(None); }
-        while self.src[self.curr].is_ascii_whitespace() {
-            if self.src[self.curr] == b'\n' {
+        let text = self.str_from_range(self.pos..end);
+        for (keyword, kind) in Self::KEYWORDS {
+            if text == *keyword {
+                self.curr_token_len = text.len();
+                return Some(kind.clone());
+            }
+        }
+
+        None
+    }
+
+    fn number(&mut self) -> Option<i64> {
+        if !self.src[self.pos].is_ascii_digit() { return None; }
+        let mut end: usize = self.pos+1;
+        while end < self.src.len() &&
+            self.src[end].is_ascii_digit() {
+                end += 1;
+        }
+
+        match self.str_from_range(self.pos..end).parse::<i64>() {
+            Ok(num) => {
+                self.curr_token_len = end - self.pos;
+                Some(num)
+            },
+            Err(_) => {
+                lexical_err!(self.loc, "Invalid 64-bit integer");
+            }
+        }
+    }
+
+    fn punct(&mut self) -> Option<Punct> {
+        let punct = match self.src[self.pos] {
+            b',' => Punct::Comma,
+            b';' => Punct::Semicolon,
+            b'=' => Punct::Eq,
+            b'(' => Punct::OpenParen,
+            b')' => Punct::CloseParen,
+            b'{' => Punct::OpenCurly,
+            b'}' => Punct::CloseCurly,
+            _ => return None
+        };
+        self.curr_token_len = 1;
+        Some(punct)
+    }
+
+    fn bin_op(&mut self) -> Option<BinOpKind> {
+        let bin_op_kind = match self.src[self.pos] {
+            b'+' => { self.curr_token_len = 1; BinOpKind::Add },
+            b'-' => { self.curr_token_len = 1; BinOpKind::Sub },
+            b'*' => { self.curr_token_len = 1; BinOpKind::Mul },
+            b'/' => { self.curr_token_len = 1; BinOpKind::Div },
+            b'=' if self.src[self.pos+1] == b'=' => { self.curr_token_len = 2; BinOpKind::Eq },
+            b'!' if self.src[self.pos+1] == b'=' => { self.curr_token_len = 2; BinOpKind::Ne },
+            b'&' if self.src[self.pos+1] == b'&' => { self.curr_token_len = 2; BinOpKind::And },
+            b'|' if self.src[self.pos+1] == b'|' => { self.curr_token_len = 2; BinOpKind::Or },
+            b'>' => {
+                if self.src[self.pos+1] == b'=' {
+                    self.curr_token_len = 2;
+                    BinOpKind::Ge
+                } else {
+                    self.curr_token_len = 1;
+                    BinOpKind::Gt
+                }
+            },
+            b'<' => {
+                if self.src[self.pos+1] == b'=' {
+                    self.curr_token_len = 2;
+                    BinOpKind::Le
+                } else {
+                    self.curr_token_len = 1;
+                    BinOpKind::Lt
+                }
+            },
+            _ => return None
+        };
+
+        Some(bin_op_kind)
+    }
+
+    pub fn expect_ident(&mut self) -> &'static str {
+        self.pos += self.curr_token_len;
+        self.loc.col += self.curr_token_len;
+        if !self.skip_whitespace() {
+            if let Some(text) = self.ident() {
+                return text;
+            }
+        }
+
+        syntax_err!(self.loc, "Identifier was expected, but it did not appear");
+    }
+
+    pub fn expect_punct(&mut self, expected: Punct) {
+        self.pos += self.curr_token_len;
+        self.loc.col += self.curr_token_len;
+        if !self.skip_whitespace() {
+            if let Some(punct) = self.punct() {
+                if punct != expected {
+                    syntax_err!(self.loc, "Punctuator `{expected}` was expected, but found `{punct}`");
+                }
+                return;
+            }
+        }
+
+        syntax_err!(self.loc, "Punctuator `{expected}` was expected, but it did not appear");
+    }
+
+    pub fn next_any(&mut self) -> Option<Token> {
+        self.pos += self.curr_token_len;
+        self.loc.col += self.curr_token_len;
+        if self.skip_whitespace() {
+            self.curr_token_len = 0;
+            return None;
+        }
+
+        let result =
+            self.bin_op().map(|op| Token::BinOp(op))
+            .or_else(|| self.punct().map(|p| Token::Punct(p)))
+            .or_else(|| self.keyword().map(|k| Token::Keyword(k)))
+            .or_else(|| self.number().map(|n| Token::Number(n)))
+            .or_else(|| self.ident().map(|i| Token::Ident(i)));
+
+        if result.is_none() {
+            lexical_err!(self.loc, "Undefined token");
+        }
+
+        result
+    }
+
+    pub fn unexpected_token_err(&self, token: Token) -> ! {
+        syntax_err!(self.loc, "Unexpected token {token}");
+    }
+
+    pub fn expect_any(&mut self) -> Token {
+        self.next_any().unwrap_or_else(|| {
+            syntax_err!(self.loc, "Token was expected, but reached the end");
+        })
+    }
+
+    fn str_from_range(&self, range: std::ops::Range<usize>) -> &'static str {
+        unsafe {
+            transmute::<&str, &'static str>(
+                std::str::from_utf8(&self.src[range])
+                    .unwrap_or_else(|err| {
+                        lexical_err!(self.loc, "Invalid UTF-8");
+                    })
+            )
+        }
+    }
+
+    // returns true if the end is reached
+    fn skip_whitespace(&mut self) -> bool {
+        if self.pos >= self.src.len() { return true; }
+        while self.src[self.pos].is_ascii_whitespace() {
+            if self.src[self.pos] == b'\n' {
                 self.loc.row += 1;
-                self.loc.col = 0;
+                self.loc.col = 1;
             } else {
                 self.loc.col += 1;
             }
-            self.curr += 1;
-            if self.curr == self.src.len() { return Ok(None); }
+            self.pos += 1;
+            if self.pos == self.src.len() { return true; }
         }
-
-
-        let mut res_kind: TokenKind;
-        let mut res_text_end = self.curr+1;
-        match self.src[self.curr] {
-            b'=' => { res_kind = TokenKind::Eq;         },
-            b'+' => { res_kind = TokenKind::Plus;       },
-            b'-' => { res_kind = TokenKind::Minus;      },
-            b'*' => { res_kind = TokenKind::Star;       },
-            b'/' => { res_kind = TokenKind::Slash;      },
-            b';' => { res_kind = TokenKind::Semicolon   },
-            b'(' => { res_kind = TokenKind::OpenParen;  },
-            b')' => { res_kind = TokenKind::CloseParen; },
-            b'{' => { res_kind = TokenKind::OpenCurly;  },
-            b'}' => { res_kind = TokenKind::CloseCurly; },
-            b',' => { res_kind = TokenKind::Comma;      },
-            s @ _ => {
-                if s.is_ascii_alphabetic() {
-                    res_kind = TokenKind::Name;
-                    while res_text_end < self.src.len() && self.src[res_text_end].is_ascii_alphanumeric() {
-                        res_text_end += 1;
-                    }
-                } else if s.is_ascii_digit() {
-                    res_kind = TokenKind::Num;
-                    while res_text_end < self.src.len() && self.src[res_text_end].is_ascii_digit() {
-                        res_text_end += 1;
-                    }
-                } else if s == b'"' {
-                    res_kind = TokenKind::StrLit;
-                    while res_text_end < self.src.len() && self.src[res_text_end] != b'"' {
-                        res_text_end += 1
-                    }
-                    res_text_end += 1;
-                } else {
-                    eprintln!("ERROR:{}: undefined token", self.loc);
-                    return Err(());
-                }
-            }
-        }
-
-        unsafe {
-            let text = std::str::from_utf8_unchecked(
-                std::slice::from_raw_parts(
-                    self.src.as_ptr().add(self.curr),
-                    res_text_end-self.curr
-                )
-            );
-
-            if text == "fn" { res_kind = TokenKind::KeywordFn }
-            else if text == "return" { res_kind = TokenKind::KeywordReturn; }
-            else if text == "if" { res_kind = TokenKind::KeywordIf; }
-            self.peeked = Some(Token { kind: res_kind, text });
-        }
-
-        Ok(self.peeked.clone())
-    }
-
-    pub fn next(&mut self) -> Result<Option<Token>> {
-        if self.peeked.is_none() { let _ = self.peek()?; }
-        if let Some(t) = &self.peeked {
-            self.loc.col += t.text.len();
-            self.curr += t.text.len();
-            Ok(self.peeked.take())
-        } else { Ok(None) }
-    }
-
-    pub fn expect_next(&mut self, exp_tk: TokenKind) -> Result<Token> {
-        match self.peek()? {
-            None => {
-                eprintln!(
-                    "ERROR:{}: token `{}` was expected, but it did not appear",
-                    self.loc,
-                    exp_tk,
-                );
-                Err(())
-            },
-            Some(token) if token.kind != exp_tk => {
-                eprintln!(
-                    "ERROR:{}: token `{}` was expected, but found `{}`",
-                    self.loc,
-                    exp_tk,
-                    token.kind
-                );
-                Err(())
-            },
-            _ => Ok(self.next().unwrap().unwrap())
-        }
-    }
-
-    pub fn expect_next_oneof(&mut self, exp_tks: &[TokenKind]) -> Result<Token> {
-        match self.peek()? {
-            None => {
-                eprint!("ERROR:{}: one of the [ ", self.loc);
-                for tk in exp_tks { eprint!("`{tk}` "); }
-                eprint!("] was expected, but it did not appear\n");
-                Err(())
-            },
-            Some(token) if !exp_tks.contains(&token.kind) => {
-                eprint!("ERROR:{}: one of the [ ", self.loc);
-                for tk in exp_tks { eprint!("`{tk}` "); }
-                eprint!("] was expected, but found `{}`\n", token.kind);
-                Err(())
-            },
-            _ => Ok(self.next().unwrap().unwrap())
-        }
+        false
     }
 }
 
@@ -184,31 +290,221 @@ impl fmt::Display for Loc {
     }
 }
 
-impl fmt::Display for TokenKind {
+impl fmt::Display for Punct {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            TokenKind::Name          => "name",
-            TokenKind::StrLit        => "string literal",
-            TokenKind::Num           => "number",
-            TokenKind::Eq            => "=",
-            TokenKind::Plus          => "+",
-            TokenKind::Minus         => "-",
-            TokenKind::Slash         => "/",
-            TokenKind::Star          => "*",
-            TokenKind::Semicolon     => ";",
-            TokenKind::OpenParen     => "(",
-            TokenKind::CloseParen    => ")",
-            TokenKind::KeywordFn     => "fn",
-            TokenKind::KeywordReturn => "return",
-            TokenKind::OpenCurly     => "{",
-            TokenKind::CloseCurly    => "}",
-            TokenKind::Comma         => ",",
-            TokenKind::KeywordIf     => "if",
-        })
+         match self {
+            Punct::Comma      => write!(f, ","),
+            Punct::Semicolon  => write!(f, ";"),
+            Punct::Eq         => write!(f, "="),
+            Punct::OpenParen  => write!(f, "("),
+            Punct::CloseParen => write!(f, ")"),
+            Punct::OpenCurly  => write!(f, "{{"),
+            Punct::CloseCurly => write!(f, "}}"),
+        }
     }
 }
 
+impl fmt::Display for BinOpKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BinOpKind::Add => write!(f, "+"),
+            BinOpKind::Sub => write!(f, "-"),
+            BinOpKind::Mul => write!(f, "*"),
+            BinOpKind::Div => write!(f, "/"),
+            BinOpKind::Eq  => write!(f, "=="),
+            BinOpKind::Ne  => write!(f, "!="),
+            BinOpKind::Gt  => write!(f, ">"),
+            BinOpKind::Ge  => write!(f, ">="),
+            BinOpKind::Lt  => write!(f, "<"),
+            BinOpKind::Le  => write!(f, "<="),
+            BinOpKind::And => write!(f, "&&"),
+            BinOpKind::Or  => write!(f, "||"),
+        }
+    }
+}
 
+impl fmt::Display for Keyword {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Keyword::If     => write!(f, "if"),
+            Keyword::Fn     => write!(f, "fn"),
+            Keyword::Return => write!(f, "return"),
+        }
+    }
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Token::Ident(text)   => write!(f, "identifier `{text}`"),
+            Token::StrLit(text)  => write!(f, "string literal `{text}`"),
+            Token::Number(num)   => write!(f, "number `{num}`"),
+            Token::BinOp(kind)   => write!(f, "binary operation `{kind}`"),
+            Token::Keyword(kind) => write!(f, "keyword `{kind}`"),
+            Token::Punct(kind)   => write!(f, "punctuator `{kind}`"),
+        }
+    }
+}
+
+//    pub fn try_next(
+//        &mut self,
+//        expected_kind: TokenKind
+//    ) -> Option<Token> {
+//        match expected_kind {
+//            TokenKind::BinOp => {
+//                match self.src[self.pos] {
+//                    b'+' => {
+//                        self.pos += 1;
+//                        Some(Token::BinOp(BinOpKind::Add))
+//                    },
+//                    b'-' => { 
+//                        self.pos += 1;
+//                        Some(Token::BinOp(BinOpKind::Sub))
+//                    },
+//                    b'*' => {
+//                        self.pos += 1;
+//                        Some(Token::BinOp(BinOpKind::Mul))
+//                    },
+//                    b'/' => {
+//                        self.pos += 1;
+//                        Some(Token::BinOp(BinOpKind::Div))
+//                    },
+//
+//                    b'=' if self.src[self.pos+1] == b'=' => {
+//                        self.pos += 2;
+//                        Some(Token::BinOp(BinOpKind::Eq))
+//                    },
+//
+//                    b'!' if self.src[self.pos+1] == b'=' => {
+//                        self.pos += 2;
+//                        Some(Token::BinOp(BinOpKind::Ne))
+//                    },
+//                    b'&' if self.src[self.pos+1] == b'&' => {
+//                        self.pos += 2;
+//                        Some(Token::BinOp(BinOpKind::And))
+//                    },
+//                    b'|' if self.src[self.pos+1] == b'|' => {
+//                        self.pos += 2;
+//                        Some(Token::BinOp(BinOpKind::Or))
+//                    }
+//
+//                    b'<' => {
+//                        if self.src[self.pos+1] == b'=' {
+//                            self.pos += 2;
+//                            Some(Token::BinOp(BinOpKind::Le))
+//                        } else {
+//                            self.pos += 1;
+//                            Some(Token::BinOp(BinOpKind::Lt))
+//                        }
+//                    },
+//                    b'>' => {
+//                        if self.src[self.pos+1] == b'=' {
+//                            self.pos += 2;
+//                            Some(Token::BinOp(BinOpKind::Ge))
+//                        } else {
+//                            self.pos += 1;
+//                            Some(Token::BinOp(BinOpKind::Gt))
+//                        }
+//                    },
+//
+//                    _ => None
+//                }
+//            },
+//
+//            TokenKind::Ident if self.src[self.pos].is_ascii_alphabetic() => {
+//                let mut end = self.pos+1;
+//                while self.src[end].is_ascii_alphanumeric() { end += 1; }
+//                let text = std::str::from_utf8(&self.src[self.pos..end]).unwrap();
+//                self.pos = end;
+//                unsafe { Some(Token::Ident(transmute::<&str, &'static str>(text))) }
+//            },
+//
+//            TokenKind::KeywordIf
+//            | TokenKind::KeywordFn
+//            | TokenKind::KeywordReturn => {
+//                let mut end = self.pos+1;
+//                while self.src[end].is_ascii_alphanumeric() { end += 1; }
+//                let text = std::str::from_utf8(&self.src[self.pos..end]).unwrap();
+//                let i = expected_kind as usize - TokenKind::KeywordIf as usize;
+//                if text == KEYWORDS[i].0 {
+//                    Some(KEYWORDS[i].1.clone())
+//                } else {
+//                    None
+//                }
+//            },
+//
+//            TokenKind::Num if self.src[self.pos].is_ascii_digit() => {
+//                let mut end = self.pos+1;
+//                while self.src[end].is_ascii_digit() { end += 1; }
+//                let text = std::str::from_utf8(&self.src[self.pos..end]).unwrap();
+//                self.pos = end;
+//                Some(Token::Num(text.parse::<i64>().unwrap()))
+//            },
+//
+//            TokenKind::StrLit if self.src[self.pos] == b'"' => {
+//                let mut end = self.pos+1;
+//                while self.src[end] != b'"' {
+//                    end += 1;
+//                    if end == self.src.len() {
+//                        lexical_err!(self.loc, "Mismatched `\"`");
+//                    }
+//                }
+//                let text = std::str::from_utf8(&self.src[self.pos+1..end]).unwrap();
+//                self.pos = end+1;
+//                unsafe { Some(Token::StrLit(transmute::<&str, &'static str>(text))) }
+//            },
+//
+//            TokenKind::Semicolon  if self.src[self.pos] == b';' => {self.pos += 1; Some(Token::Semicolon)},
+//            TokenKind::OpenParen  if self.src[self.pos] == b'(' => {self.pos += 1; Some(Token::OpenParen)},
+//            TokenKind::CloseParen if self.src[self.pos] == b')' => {self.pos += 1; Some(Token::CloseParen)},
+//            TokenKind::OpenCurly  if self.src[self.pos] == b'{' => {self.pos += 1; Some(Token::OpenCurly)},
+//            TokenKind::CloseCurly if self.src[self.pos] == b'}' => {self.pos += 1; Some(Token::CloseCurly)},
+//            TokenKind::Comma      if self.src[self.pos] == b',' => {self.pos += 1; Some(Token::Comma)},
+//            TokenKind::Eq         if self.src[self.pos] == b'=' => {self.pos += 1; Some(Token::Eq)}
+//
+//            _ => None
+//        }
+//    }
+//
+//    pub fn expect(&mut self, expected_kind: TokenKind) -> Token {
+//        if !self.skip_whitespace() {
+//            if let Some(t) = self.try_next(expected_kind.clone()) {
+//                return t;
+//            }
+//        }
+//
+//        syntax_err!(
+//            self.loc,
+//            "Token `{}` was expected, but found `{}`",
+//            expected_kind,
+//            std::str::from_utf8(&self.src[self.pos..self.pos+5]).unwrap()
+//        );
+//    }
+//}
+//
+//
+//
+//impl fmt::Display for TokenKind {
+//    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//        write!(f, "{}", match self {
+//            TokenKind::Ident         => "identifier",
+//            TokenKind::StrLit        => "string literal",
+//            TokenKind::Num           => "number",
+//            TokenKind::Eq            => "=",
+//            TokenKind::BinOp         => "binary operation",
+//            TokenKind::Semicolon     => ";",
+//            TokenKind::OpenParen     => "(",
+//            TokenKind::CloseParen    => ")",
+//            TokenKind::KeywordFn     => "fn",
+//            TokenKind::KeywordReturn => "return",
+//            TokenKind::OpenCurly     => "{",
+//            TokenKind::CloseCurly    => "}",
+//            TokenKind::Comma         => ",",
+//            TokenKind::KeywordIf     => "if",
+//        })
+//    }
+//}
+//
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,65 +513,88 @@ mod tests {
         num1 = 324;\n\t\
         num2 =    345;\
         \n\n\nnum3=4;\n\
-        str = \"Hello world\";
+        num3 = num1 == num2;\n\
+        fn some()
     ".as_bytes();
+
+    #[test]
+    #[should_panic]
+    fn unexpected_token() {
+        let mut lexer = Lexer::new(SOURCE);
+        match lexer.expect_any() {
+            Token::Ident(_) => {},
+            t @ _ => lexer.unexpected_token_err(t)
+        }
+        match lexer.expect_any() {
+            Token::Punct(Punct::Semicolon) => {},
+            t @ _ => lexer.unexpected_token_err(t)
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn expect_punct() {
+        let mut lexer = Lexer::new(SOURCE);
+        lexer.expect_punct(Punct::Eq);
+    }
+
+    #[test]
+    #[should_panic]
+    fn expect_ident() {
+        let mut lexer = Lexer::new(SOURCE);
+        let _ = lexer.expect_ident();
+        let _ = lexer.expect_ident();
+    }
+
+    #[test]
+    #[should_panic]
+    fn illegal_int() {
+        let mut lexer = Lexer::new(b"123412341234123412341234123412341234");
+        let _ = lexer.expect_any();
+    }
+
+    #[test]
+    #[should_panic]
+    fn illegal_utf8() {
+        let mut lexer = Lexer::new(b"\xE0");
+        let _ = lexer.expect_any();
+    }
 
     #[test]
     fn test_next() {
         let mut lexer = Lexer::new(SOURCE);
         let expected = [
-            ("num1",            TokenKind::Name),
-            ("=",               TokenKind::Eq),
-            ("324",             TokenKind::Num),
-            (";",               TokenKind::Semicolon),
-            ("num2",            TokenKind::Name),
-            ("=",               TokenKind::Eq),
-            ("345",             TokenKind::Num),
-            (";",               TokenKind::Semicolon),
-            ("num3",            TokenKind::Name),
-            ("=",               TokenKind::Eq),
-            ("4",               TokenKind::Num),
-            (";",               TokenKind::Semicolon),
-            ("str",             TokenKind::Name),
-            ("=",               TokenKind::Eq),
-            ("\"Hello world\"", TokenKind::StrLit),
-            (";",               TokenKind::Semicolon)
+            Token::Ident("num1"),
+            Token::Punct(Punct::Eq),
+            Token::Number(324),
+            Token::Punct(Punct::Semicolon),
+            Token::Ident("num2"),
+            Token::Punct(Punct::Eq),
+            Token::Number(345),
+            Token::Punct(Punct::Semicolon),
+            Token::Ident("num3"),
+            Token::Punct(Punct::Eq),
+            Token::Number(4),
+            Token::Punct(Punct::Semicolon),
+            Token::Ident("num3"),
+            Token::Punct(Punct::Eq),
+            Token::Ident("num1"),
+            Token::BinOp(BinOpKind::Eq),
+            Token::Ident("num2"),
+            Token::Punct(Punct::Semicolon),
+            Token::Keyword(Keyword::Fn),
+            Token::Ident("some"),
+            Token::Punct(Punct::OpenParen),
         ];
 
-        let mut i = 0;
-        while let Some(tok) = &lexer.next().unwrap() {
-            assert_eq!(expected[i].0, tok.text, "{}", i);
-            assert_eq!(expected[i].1, tok.kind);
-            i += 1;
+        for (i, x) in expected.iter().enumerate() {
+            let token = lexer.expect_any();
+            assert_eq!(token, x.clone(), "{i}");
         }
     }
-
-    #[test]
-    fn test_next_with_undefined_token() {
-        let mut lexer = Lexer::new(b"$");
-        assert!(lexer.next().is_err());
-    }
-
-    #[test]
-    fn test_next_with_eof() { 
-        let mut lexer = Lexer::new("".as_bytes());
-        assert!(lexer.next().unwrap().is_none());
-    }
-
-    #[test]
-    fn test_peek() {
-        let mut lexer = Lexer::new(SOURCE);
-
-        let t1 = lexer.peek().unwrap().unwrap();
-        let t2 = lexer.peek().unwrap().unwrap();
-        assert_eq!(t1.text, t2.text);
-
-        let t3 = lexer.next().unwrap().unwrap();
-        assert_eq!(t1.text, t3.text);
-
-        let t3 = lexer.next().unwrap().unwrap();
-        assert_ne!(t1.text, t3.text);
-    }
 }
+
+
+
 
 // TODO: more convinient way to declare and handle token kinds

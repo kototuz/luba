@@ -4,6 +4,8 @@ use std::fs::File;
 
 use super::Result;
 use super::parser::*;
+use lexer::BinOpKind;
+
 
 fn write_premain(main: &mut File) -> IOResult<()> {
     let _ = writeln!(main, "# premain")?;
@@ -68,7 +70,7 @@ fn compile_expr(
                     }
                 },
 
-                Expr::OpAdd => {
+                Expr::BinOp(BinOpKind::Add) => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
                     match write_target {
@@ -87,7 +89,7 @@ fn compile_expr(
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 }
 
-                Expr::OpSub  => {
+                Expr::BinOp(BinOpKind::Sub)  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
                     match write_target {
@@ -106,7 +108,7 @@ fn compile_expr(
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 },
 
-                Expr::OpMul  => {
+                Expr::BinOp(BinOpKind::Mul)  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
                     match write_target {
@@ -125,7 +127,7 @@ fn compile_expr(
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 },
 
-                Expr::OpDiv  => {
+                Expr::BinOp(BinOpKind::Div)  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
                     match write_target {
@@ -193,28 +195,28 @@ fn compile_expr(
                         let _ = writeln!(fn_file, "data modify storage mcs local[-1].{idx} set value {num}")?;
                     },
 
-                    Expr::OpAdd => {
+                    Expr::BinOp(BinOpKind::Add) => {
                         let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                         let _ = writeln!(fn_file, "execute store result storage mcs local[-1].{idx} int 1 run scoreboard players operation accum r0 += accum r1")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     },
 
-                    Expr::OpSub => {
+                    Expr::BinOp(BinOpKind::Sub) => {
                         let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                         let _ = writeln!(fn_file, "execute store result storage mcs local[-1].{idx} int 1 run scoreboard players operation accum r0 -= accum r1")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     },
 
-                    Expr::OpMul => {
+                    Expr::BinOp(BinOpKind::Mul) => {
                         let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                         let _ = writeln!(fn_file, "execute store result storage mcs local[-1].{idx} int 1 run scoreboard players operation accum r0 *= accum r1")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                     },
 
-                    Expr::OpDiv => {
+                    Expr::BinOp(BinOpKind::Div) => {
                         let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                         let _ = writeln!(fn_file, "execute store result storage mcs local[-1].{idx} int 1 run scoreboard players operation accum r0 /= accum r1")?;
                         let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
@@ -244,28 +246,28 @@ fn compile_expr(
                     let _ = writeln!(fn_file, "data modify storage mcs stack append value {n}")?;
                 },
 
-                Expr::OpAdd  => {
+                Expr::BinOp(BinOpKind::Add)  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
                     let _ = writeln!(fn_file, "execute store result storage mcs stack[-2] int 1 run scoreboard players operation accum r0 += accum r1")?;
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 },
 
-                Expr::OpSub  => {
+                Expr::BinOp(BinOpKind::Sub)  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
                     let _ = writeln!(fn_file, "execute store result storage mcs stack[-2] int 1 run scoreboard players operation accum r0 -= accum r1")?;
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 },
 
-                Expr::OpMul  => {
+                Expr::BinOp(BinOpKind::Mul)  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
                     let _ = writeln!(fn_file, "execute store result storage mcs stack[-2] int 1 run scoreboard players operation accum r0 *= accum r1")?;
                     let _ = writeln!(fn_file, "data remove storage mcs stack[-1]")?;
                 },
 
-                Expr::OpDiv  => {
+                Expr::BinOp(BinOpKind::Div)  => {
                     let _ = writeln!(fn_file, "execute store result score accum r0 run data get storage mcs stack[-2]")?;
                     let _ = writeln!(fn_file, "execute store result score accum r1 run data get storage mcs stack[-1]")?;
                     let _ = writeln!(fn_file, "execute store result storage mcs stack[-2] int 1 run scoreboard players operation accum r0 /= accum r1")?;
