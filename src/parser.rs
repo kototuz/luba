@@ -3,7 +3,7 @@ use std::ops::Range;
 use lexer::*;
 use super::{syntax_err, exit_failure};
 
-type ExprRange = Range<usize>;
+pub type ExprRange = Range<usize>;
 type StmtIdx =  usize;
 type BlockIdx = usize;
 type BlockRange = Range<BlockIdx>;
@@ -32,6 +32,7 @@ pub enum Stmt<'a> {
 //   if_block(cond: 1==1, block_len: 3)
 // var_assign
 
+#[derive(Debug)]
 pub struct FnDecl<'a> {
     pub name: &'a str,
     pub blocks: BlockRange, // blocks[0] - function body
@@ -73,7 +74,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Program<'a> {
         let mut fn_decl = FnDecl {
             name: lex.expect_ident(),
             params: Vec::new(), // TODO: maybe make one param buffer for every `fn_decl`
-            blocks: BlockRange { start: ret.blocks.len(), end: 0 },
+            blocks: BlockRange { start: curr_block_idx, end: 0 },
         };
 
         ret.blocks.push(Block {
@@ -126,7 +127,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Program<'a> {
                     let expr = parse_expr(&mut ret.exprs, lex, Punct::OpenCurly);
                     ret.stmts.push(Stmt::If {
                         cond: expr,
-                        body: ret.blocks.len() - fn_decl.blocks.start
+                        body: ret.blocks.len()
                     });
 
                     ret.blocks.push(Block {
@@ -153,7 +154,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Program<'a> {
             }
         }
 
-        curr_block_idx += 1;
+        curr_block_idx = ret.blocks.len();
         fn_decl.blocks.end = ret.blocks.len();
         ret.fns.push(fn_decl);
     }

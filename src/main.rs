@@ -32,6 +32,15 @@ macro_rules! syntax_err {
     }
 }
 
+#[macro_export]
+macro_rules! compilation_err {
+    ($($arg:tt)*) => {
+        eprint!("ERROR: CompilationError: ");
+        eprintln!($($arg)*);
+        exit_failure!();
+    }
+}
+
 fn main2() -> Result<()> {
     let file_path = std::env::args().nth(1).ok_or_else(|| {
         eprintln!("ERROR: source file must be provided");
@@ -48,7 +57,7 @@ fn main2() -> Result<()> {
 
     let mut lexer = lexer::Lexer::new(buffer.as_bytes());
     let program = parser::parse(&mut lexer);
-    let _ = compiler::compile(&program).map_err(|_| {})?;
+    compiler::compile(program);
 
     Ok(())
 }
