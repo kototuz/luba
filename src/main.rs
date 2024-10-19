@@ -1,6 +1,7 @@
 mod lexer;
 mod parser;
 mod compiler;
+mod semantic;
 
 use std::io::prelude::*;
 use std::process::ExitCode;
@@ -33,6 +34,22 @@ macro_rules! syntax_err {
 }
 
 #[macro_export]
+macro_rules! unexpected_token_err {
+    ($loc:expr, $t:ident) => {
+        syntax_err!($loc, "Unexpected {}", $t);
+    }
+}
+
+#[macro_export]
+macro_rules! semantic_err {
+    ($loc:expr, $($arg:tt)*) => {
+        eprint!("ERROR:{}: SemanticError: ", $loc);
+        eprintln!($($arg)*);
+        exit_failure!();
+    }
+}
+
+#[macro_export]
 macro_rules! compilation_err {
     ($($arg:tt)*) => {
         eprint!("ERROR: CompilationError: ");
@@ -55,9 +72,13 @@ fn main2() -> Result<()> {
         eprintln!("ERROR: could not read file `{file_path}`: {err}");
     })?;
 
-    let mut lexer = lexer::Lexer::new(buffer.as_bytes());
-    let program = parser::parse(&mut lexer);
-    compiler::compile(program);
+    let mut lexer = lexer::Lexer::new(buffer.as_bytes()); // lexical analysis (lazy)
+    let ast = parser::parse(&mut lexer);                  // syntax  analysis
+    compiler::compile(ast);                               // compilation
+
+    //let program = parser::parse(&mut lexer);
+    //semantic::analyze(program);
+    //compiler::compile(program);
 
     Ok(())
 }

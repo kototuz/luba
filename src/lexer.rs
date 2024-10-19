@@ -58,8 +58,9 @@ pub enum BinOpKind {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Keyword {
     If,
+    Else,
     Fn,
-    Return
+    Return,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -70,6 +71,7 @@ pub enum Punct {
     CloseParen,
     OpenCurly,
     CloseCurly,
+    Colon,
     Eq,
 }
 
@@ -77,7 +79,7 @@ pub enum Punct {
 pub enum Token {
     Ident(&'static str),
     StrLit(&'static str),
-    Number(i64),
+    Number(i32),
     BinOp(BinOpKind),
     Keyword(Keyword),
     Punct(Punct),
@@ -85,9 +87,10 @@ pub enum Token {
 
 impl<'a> Lexer<'a> {
     const KEYWORDS: &[(&'static str, Keyword)] = &[
-        ("if", Keyword::If),
-        ("fn", Keyword::Fn),
+        ("if",     Keyword::If),
+        ("fn",     Keyword::Fn),
         ("return", Keyword::Return),
+        ("else",   Keyword::Else)
     ];
 
     pub fn new(src: &'a [u8]) -> Self {
@@ -128,7 +131,7 @@ impl<'a> Lexer<'a> {
         None
     }
 
-    fn number(&mut self) -> Option<i64> {
+    fn number(&mut self) -> Option<i32> {
         if !self.src[self.pos].is_ascii_digit() { return None; }
         let mut end: usize = self.pos+1;
         while end < self.src.len() &&
@@ -136,13 +139,13 @@ impl<'a> Lexer<'a> {
                 end += 1;
         }
 
-        match self.str_from_range(self.pos..end).parse::<i64>() {
+        match self.str_from_range(self.pos..end).parse::<i32>() {
             Ok(num) => {
                 self.curr_token_len = end - self.pos;
                 Some(num)
             },
             Err(_) => {
-                lexical_err!(self.loc, "Invalid 64-bit integer");
+                lexical_err!(self.loc, "Invalid 32-bit integer");
             }
         }
     }
@@ -156,6 +159,7 @@ impl<'a> Lexer<'a> {
             b')' => Punct::CloseParen,
             b'{' => Punct::OpenCurly,
             b'}' => Punct::CloseCurly,
+            b':' => Punct::Colon,
             _ => return None
         };
         self.curr_token_len = 1;
@@ -295,6 +299,7 @@ impl fmt::Display for Punct {
          match self {
             Punct::Comma      => write!(f, ","),
             Punct::Semicolon  => write!(f, ";"),
+            Punct::Colon      => write!(f, ":"),
             Punct::Eq         => write!(f, "="),
             Punct::OpenParen  => write!(f, "("),
             Punct::CloseParen => write!(f, ")"),
@@ -327,6 +332,7 @@ impl fmt::Display for Keyword {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Keyword::If     => write!(f, "if"),
+            Keyword::Else   => write!(f, "else"),
             Keyword::Fn     => write!(f, "fn"),
             Keyword::Return => write!(f, "return"),
         }
