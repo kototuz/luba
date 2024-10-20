@@ -1,6 +1,4 @@
-use std::ops::Range;
-
-use lexer::*;
+use crate::lexer::*;
 use super::{syntax_err, unexpected_token_err, exit_failure};
 
 pub type ExprIdx = usize;

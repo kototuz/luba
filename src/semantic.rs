@@ -1,4 +1,4 @@
-use parser::*;
+use crate::parser::*;
 
 use super::{semantic_err, exit_failure};
 

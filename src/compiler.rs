@@ -3,10 +3,10 @@ use std::io::Result as IOResult;
 use std::fs::File;
 use std::fmt;
 
-use semantic;
+use crate::semantic;
 use super::{exit_failure, compilation_err};
-use parser::*;
-use lexer::BinOpKind;
+use crate::parser::*;
+use crate::lexer::BinOpKind;
 //
 //
 //macro_rules! write_ln {

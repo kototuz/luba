@@ -8,10 +8,11 @@ use std::process::ExitCode;
 
 type Result<T> = std::result::Result<T, ()>;
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! exit_failure { () => { panic!(); } }
-#[cfg(not(test))]
+
+#[cfg(not(debug_assertions))]
 #[macro_export]
 macro_rules! exit_failure { () => { std::process::exit(1); } }
 
