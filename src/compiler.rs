@@ -279,7 +279,7 @@ enum Inst {
 
 fn compile_expr(
     ast: &Ast,
-    st: &semantic::SymbolTable,
+    st: &semantic::Analyzer,
     insts: &mut Vec<Inst>,
     mut expr: ExprRange
 ) {
@@ -317,7 +317,7 @@ fn compile_expr(
 
 fn compile_block(
     ast: &Ast,
-    st: &semantic::SymbolTable,
+    st: &semantic::Analyzer,
     insts: &mut Vec<Inst>,
     block: &Block
 ) {
@@ -368,13 +368,25 @@ fn compile_block(
 
 pub fn compile(ast: Ast) {
     let mut insts: Vec<Inst> = Vec::new();
+    let mut analyzer = semantic::Analyzer::new(&ast);
 
-    let st = semantic::analyze(&ast);
 
-    insts.push(Inst::RegCp(Reg::SP2, Reg::SP));
-    insts.push(Inst::RegAdd(Reg::SP, st.0.len()));
+    for fn_decl_idx in 0..ast.fn_decls.len() {
+        analyzer.analyze_fn_decl(fn_decl_idx);
+        insts.push(Inst::RegCp(Reg::SP2, Reg::SP));
+        insts.push(Inst::RegAdd(Reg::SP, analyzer.local_st.len()));
+        compile_block(
+            &ast,
+            &analyzer,
+            &mut insts,
+            &ast.fn_decls[fn_decl_idx].body
+        );
+    }
 
-    compile_block(&ast, &st, &mut insts, &ast.stmts);
+    //insts.push(Inst::RegCp(Reg::SP2, Reg::SP));
+    //insts.push(Inst::RegAdd(Reg::SP, st.0.len()));
+
+    //compile_block(&ast, &st, &mut insts, &ast.stmts);
 
     for (i, inst) in insts.iter().enumerate() {
         println!("{i}: {inst:?}");

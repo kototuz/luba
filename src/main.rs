@@ -74,7 +74,11 @@ fn main2() -> Result<()> {
 
     let mut lexer = lexer::Lexer::new(buffer.as_bytes()); // lexical analysis (lazy)
     let ast = parser::parse(&mut lexer);                  // syntax  analysis
+    for fn_decl in &ast.fn_decls {
+        println!("{fn_decl:?}");
+    }
     compiler::compile(ast);                               // compilation
+
 
     //let program = parser::parse(&mut lexer);
     //semantic::analyze(program);

@@ -62,6 +62,7 @@ pub enum Keyword {
     Fn,
     Return,
     For,
+    Int,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -93,6 +94,7 @@ impl<'a> Lexer<'a> {
         ("return", Keyword::Return),
         ("else",   Keyword::Else),
         ("for",    Keyword::For),
+        ("int",    Keyword::Int),
     ];
 
     pub fn new(src: &'a [u8]) -> Self {
@@ -338,6 +340,7 @@ impl fmt::Display for Keyword {
             Keyword::Fn     => write!(f, "fn"),
             Keyword::Return => write!(f, "return"),
             Keyword::For    => write!(f, "for"),
+            Keyword::Int    => write!(f, "int"),
         }
     }
 }

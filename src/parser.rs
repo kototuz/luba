@@ -10,14 +10,24 @@ pub type Block<'a> = Vec<Stmt<'a>>;
 
 #[derive(Debug)]
 pub struct Ast<'a> {
-    pub stmts: Vec<Stmt<'a>>,
+    pub fn_decls: Vec<FnDecl<'a>>,
     pub expr_buf: Vec<Expr<'a>>,
 }
+
 
 #[derive(Debug)]
 pub struct Stmt<'a> {
     pub loc: Loc,
     pub kind: StmtKind<'a>
+}
+
+#[derive(Debug)]
+pub struct FnDecl<'a> {
+    pub name: &'a str,
+    pub params: Vec<&'a str>,
+    pub has_result: bool,
+    pub body: Block<'a>,
+    pub loc: Loc,
 }
 
 #[derive(Debug)]
@@ -47,14 +57,60 @@ pub enum Expr<'a> {
 
 
 pub fn parse<'a>(lex: &mut Lexer<'a>) -> Ast<'a> {
-    let mut expr_buf: Vec<Expr>  = Vec::new();
+    let mut ast = Ast {
+        expr_buf: Vec::new(),
+        fn_decls: Vec::new(),
+    };
 
-    // main block
-    let mut stmts: Vec<Stmt> = parse_block(
-        &mut expr_buf, lex
-    );
+    while let Some(token) = lex.next_any() {
+        // TODO: global variables
+        if token != Token::Keyword(Keyword::Fn) {
+            unexpected_token_err!(lex.loc, token);
+        } 
 
-    Ast { expr_buf, stmts }
+        let loc = lex.loc.clone();
+        let name = lex.expect_ident();
+
+        // parameters
+        lex.expect_punct(Punct::OpenParen);
+        let mut params: Vec<&str> = Vec::new();
+        match lex.expect_any() {
+            Token::Punct(Punct::CloseParen) => {},
+            Token::Ident(param_name) => {
+                params.push(param_name);
+                loop {
+                    match lex.expect_any() {
+                        Token::Punct(Punct::CloseParen) => break,
+                        Token::Punct(Punct::Comma) => {
+                            params.push(lex.expect_ident());
+                        },
+                        t @ _ => { unexpected_token_err!(lex.loc, t); }
+                    }
+                }
+            },
+            t @ _ => { unexpected_token_err!(lex.loc, t); }
+        }
+
+        // result
+        let has_result = match lex.expect_any() {
+            Token::Punct(Punct::OpenCurly) => false,
+            Token::Keyword(Keyword::Int) => {
+                lex.expect_punct(Punct::OpenCurly);
+                true
+            },
+            t @ _ => { unexpected_token_err!(lex.loc, t); }
+        };
+
+        // body
+        let body = parse_block(&mut ast.expr_buf, lex);
+
+        ast.fn_decls.push(FnDecl {
+            name, params, loc,
+            has_result, body
+        });
+    }
+
+    ast
 }
 
 fn parse_block<'a>(

@@ -2,24 +2,61 @@ use parser::*;
 
 use super::{semantic_err, exit_failure};
 
-pub struct SymbolTable<'a>(pub Vec<&'a str>);
+type SymbolTable<'a> = Vec<&'a str>;
+type FnDeclIdx = usize;
 
-struct Analyzer<'a> {
-    st: SymbolTable<'a>,
+pub struct Analyzer<'a> {
+    pub global_st: SymbolTable<'a>,
+    pub local_st: SymbolTable<'a>,
     ast: &'a Ast<'a>,
 }
 
 
 
 impl<'a> Analyzer<'a> {
+    pub fn new(ast: &'a Ast<'a>) -> Self {
+        Self {
+            global_st: SymbolTable::new(),
+            local_st: SymbolTable::new(),
+            ast
+        }
+    }
+
+    pub fn analyze_fn_decl(&mut self, idx: FnDeclIdx) {
+        let name = self.ast.fn_decls[idx].name;
+        if self.global_st.contains(&self.ast.fn_decls[idx].name) {
+            semantic_err!(
+                self.ast.fn_decls[idx].loc,
+                "Redeclaration of function `{name}`",
+            );
+        }
+
+        self.global_st.push(name);
+
+        for param in &self.ast.fn_decls[idx].params {
+            self.local_st.push(param);
+        }
+
+        self.analyze_block(&self.ast.fn_decls[idx].body);
+    }
+
+    pub fn var_sp2_offset(&self, name: &'a str) -> usize {
+        for (i, entry) in self.local_st.iter().enumerate() {
+            if *entry == name {
+                return i;
+            }
+        }
+        panic!("name `{name}` is not in ast or you forget to analyze the fn_decl before");
+    }
+
     fn analyze_block(&mut self, block: &Block<'a>) {
         for stmt in block {
             match &stmt.kind {
                 StmtKind::VarDecl(name) => {
-                    if self.st.0.contains(&name) {
+                    if self.local_st.contains(&name) {
                         semantic_err!(stmt.loc, "Redeclaration of variable `{name}`");
                     }
-                    self.st.0.push(name);
+                    self.local_st.push(name);
                 },
 
                 StmtKind::If { cond, then, elze } => {
@@ -34,7 +71,7 @@ impl<'a> Analyzer<'a> {
                 },
 
                 StmtKind::VarAssign { name, expr } => {
-                    if !self.st.0.contains(&name) {
+                    if !self.local_st.contains(&name) {
                         semantic_err!(stmt.loc, "Assignment to undeclared variable `{name}`");
                     }
                     self.analyze_expr(expr.clone());
@@ -46,7 +83,7 @@ impl<'a> Analyzer<'a> {
     fn analyze_expr(&self, mut expr: ExprRange) {
         while expr.start < expr.end {
             if let Expr::Var(name) = self.ast.expr_buf[expr.start] {
-                if !self.st.0.contains(&name) {
+                if !self.local_st.contains(&name) {
                     semantic_err!(expr.loc, "Variable `{name}` not found");
                 }
             }
@@ -55,25 +92,3 @@ impl<'a> Analyzer<'a> {
     }
 }
 
-impl<'a> SymbolTable<'a> {
-    pub fn var_sp2_offset(&self, name: &'a str) -> usize {
-        for (i, entry) in self.0.iter().enumerate() {
-            if *entry == name {
-                return i;
-            }
-        }
-        panic!("name `{name}` is not from ast");
-    }
-}
-
-
-
-pub fn analyze<'a>(ast: &'a Ast<'a>) -> SymbolTable<'a> {
-    let mut analyzer = Analyzer {
-        st: SymbolTable(Vec::new()), ast
-    };
-
-    analyzer.analyze_block(&ast.stmts);
-
-    analyzer.st
-}
