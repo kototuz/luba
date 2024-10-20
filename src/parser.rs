@@ -24,7 +24,8 @@ pub struct Stmt<'a> {
 pub enum StmtKind<'a> {
     VarAssign { name: &'a str, expr: ExprRange },
     VarDecl(&'a str),
-    If { cond: ExprRange, then: Block<'a>, elze: Block<'a> }
+    If { cond: ExprRange, then: Block<'a>, elze: Block<'a> },
+    For { cond: ExprRange, body: Block<'a> },
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +114,16 @@ fn parse_block<'a>(
 
                     t @ _ => { unexpected_token_err!(lex.loc, t); }
                 }
+            },
+
+            Token::Keyword(Keyword::For) => {
+                expr_range = parse_expr(expr_buf, lex, Punct::OpenCurly);
+                block.push(Stmt {
+                    loc, kind: StmtKind::For {
+                        cond: expr_range,
+                        body: parse_block(expr_buf, lex),
+                    }
+                });
             },
 
             Token::Keyword(Keyword::If) => {

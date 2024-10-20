@@ -321,6 +321,7 @@ fn compile_block(
     insts: &mut Vec<Inst>,
     block: &Block
 ) {
+    let mut jmpbuf = [0; 2];
     for stmt in block {
         match &stmt.kind {
             StmtKind::VarAssign { name, expr } => {
@@ -331,19 +332,33 @@ fn compile_block(
             StmtKind::If { cond, then, elze } => {
                 compile_expr(ast, st, insts, cond.clone());
                 insts.push(Inst::JmpIf(insts.len()+2));
-                let jmp_inst_ip = insts.len();
+                jmpbuf[0] = insts.len();
                 insts.push(Inst::Nop);
                 compile_block(ast, st, insts, then);
 
                 if !elze.is_empty() {
-                    let jmp_inst_ip_ex = insts.len();
+                    jmpbuf[1] = insts.len();
                     insts.push(Inst::Nop);
-                    insts[jmp_inst_ip] = Inst::Jmp(insts.len());
+                    insts[jmpbuf[0]] = Inst::Jmp(insts.len());
                     compile_block(ast, st, insts, elze);
-                    insts[jmp_inst_ip_ex] = Inst::Jmp(insts.len());
+                    insts[jmpbuf[1]] = Inst::Jmp(insts.len());
                 } else {
-                    insts[jmp_inst_ip] = Inst::Jmp(insts.len());
+                    insts[jmpbuf[0]] = Inst::Jmp(insts.len());
                 }
+            },
+
+            StmtKind::For { cond, body } => {
+                // condition
+                jmpbuf[0] = insts.len();
+                compile_expr(ast, st, insts, cond.clone());
+                insts.push(Inst::JmpIf(insts.len()+2));
+                jmpbuf[1] = insts.len();
+                insts.push(Inst::Nop);
+
+                // body
+                compile_block(ast, st, insts, body);
+                insts.push(Inst::Jmp(jmpbuf[0])); // repeat
+                insts[jmpbuf[1]] = Inst::Jmp(insts.len()); // end
             },
             
             StmtKind::VarDecl(_) => {}, // skip
