@@ -59,42 +59,24 @@ macro_rules! compilation_err {
     }
 }
 
-fn main2() -> Result<()> {
-    let file_path = std::env::args().nth(1).ok_or_else(|| {
+fn main() {
+    let file_path = std::env::args().nth(1).unwrap_or_else(|| {
         eprintln!("ERROR: source file must be provided");
-    })?;
+        exit_failure!();
+    });
 
-    let mut src_file = std::fs::File::open(&file_path).map_err(|err| {
+    let mut src_file = std::fs::File::open(&file_path).unwrap_or_else(|err| {
         eprintln!("ERROR: could not open file `{file_path}`: {err}");
-    })?;
+        exit_failure!();
+    });
 
     let mut buffer = String::new();
-    let _ = src_file.read_to_string(&mut buffer).map_err(|err| {
+    let _ = src_file.read_to_string(&mut buffer).unwrap_or_else(|err| {
         eprintln!("ERROR: could not read file `{file_path}`: {err}");
-    })?;
+        exit_failure!();
+    });
 
     let mut lexer = lexer::Lexer::new(buffer.as_bytes()); // lexical analysis (lazy)
     let ast = parser::parse(&mut lexer);                  // syntax  analysis
-    for fn_decl in &ast.fn_decls {
-        println!("{fn_decl:?}");
-    }
     compiler::compile(ast);                               // compilation
-
-
-    //let program = parser::parse(&mut lexer);
-    //semantic::analyze(program);
-    //compiler::compile(program);
-
-    Ok(())
 }
-
-fn main() -> ExitCode {
-    match main2() {
-        Err(_) => ExitCode::FAILURE,
-        Ok(_)  => ExitCode::SUCCESS,
-    }
-}
-
-
-
-// TODO: add something like that: `native!("say $var0")`
