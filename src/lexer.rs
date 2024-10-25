@@ -36,6 +36,7 @@ pub struct Lexer<'a> {
     src: &'a [u8],
     pos: usize,
     curr_token_len: usize,
+    peeked: Option<Token>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -101,7 +102,8 @@ impl<'a> Lexer<'a> {
             src,
             pos: 0,
             loc: Loc { row: 1, col: 1 },
-            curr_token_len: 0
+            curr_token_len: 0,
+            peeked: None,
         }
     }
 
@@ -216,21 +218,45 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn expect_punct(&mut self, expected: Punct) {
-        self.pos += self.curr_token_len;
-        self.loc.col += self.curr_token_len;
-        if !self.skip_whitespace() {
-            if let Some(punct) = self.punct() {
-                if punct != expected {
-                    syntax_err!(self.loc, "Punctuator `{expected}` was expected, but found `{punct}`");
-                }
-                return;
-            }
+        let p = self.expect_any();
+        if p != Token::Punct(expected.clone()) {
+            syntax_err!(self.loc, "Punctuator `{expected}` was expected, but found `{p}`");
         }
-
-        syntax_err!(self.loc, "Punctuator `{expected}` was expected, but it did not appear");
     }
 
+    //pub fn next_any(&mut self) -> Option<Token> {
+    //    self.pos += self.curr_token_len;
+    //    self.loc.col += self.curr_token_len;
+    //    if self.skip_whitespace() {
+    //        self.curr_token_len = 0;
+    //        return None;
+    //    }
+    //
+    //    let result =
+    //        self.bin_op().map(|op| Token::BinOp(op))
+    //        .or_else(|| self.punct().map(|p| Token::Punct(p)))
+    //        .or_else(|| self.keyword().map(|k| Token::Keyword(k)))
+    //        .or_else(|| self.number().map(|n| Token::Number(n)))
+    //        .or_else(|| self.ident().map(|i| Token::Ident(i)));
+    //
+    //    if result.is_none() {
+    //        lexical_err!(self.loc, "Undefined token");
+    //    }
+    //
+    //    result
+    //}
+
     pub fn next_any(&mut self) -> Option<Token> {
+        let result = self.peek_any();
+        self.peeked = None;
+        result
+    }
+
+    pub fn peek_any(&mut self) -> Option<Token> {
+        if self.peeked.is_some() {
+            return self.peeked.clone();
+        }
+        
         self.pos += self.curr_token_len;
         self.loc.col += self.curr_token_len;
         if self.skip_whitespace() {
@@ -249,7 +275,15 @@ impl<'a> Lexer<'a> {
             lexical_err!(self.loc, "Undefined token");
         }
 
+        self.peeked = result.clone();
+
         result
+    }
+
+    pub fn expect_peek_any(&mut self) -> Token {
+        self.peek_any().unwrap_or_else(|| {
+            syntax_err!(self.loc, "Token was expected, but reached the end");
+        })
     }
 
     pub fn unexpected_token_err(&self, token: Token) -> ! {
@@ -569,6 +603,18 @@ mod tests {
     fn illegal_utf8() {
         let mut lexer = Lexer::new(b"\xE0");
         let _ = lexer.expect_any();
+    }
+
+    #[test]
+    fn peek() {
+        let mut lexer = Lexer::new(SOURCE);
+        let t1 = lexer.peek_any();
+        let t2 = lexer.peek_any();
+        let t3 = lexer.next_any();
+        let t4 = lexer.next_any();
+        assert_eq!(t1, t2);
+        assert_eq!(t1, t3);
+        assert_ne!(t1, t4);
     }
 
     #[test]

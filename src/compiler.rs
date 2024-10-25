@@ -281,37 +281,31 @@ fn compile_expr(
     ast: &Ast,
     st: &semantic::Analyzer,
     insts: &mut Vec<Inst>,
-    mut expr: ExprRange
+    expr: &Expr
 ) {
-    while expr.start < expr.end {
-        match &ast.expr_buf[expr.start] {
-            Expr::BinOp(kind) => {
-                match kind {
-                    BinOpKind::And => insts.push(Inst::And),
-                    BinOpKind::Or  => insts.push(Inst::Or),
-                    BinOpKind::Add => insts.push(Inst::Add),
-                    BinOpKind::Sub => insts.push(Inst::Sub),
-                    BinOpKind::Mul => insts.push(Inst::Mul),
-                    BinOpKind::Div => insts.push(Inst::Div),
-                    //BinOpKind::Mod => insts.push(Inst::Mod),
-                    BinOpKind::Eq  => insts.push(Inst::Eq),
-                    BinOpKind::Ne  => insts.push(Inst::Ne),
-                    BinOpKind::Gt  => insts.push(Inst::Gt),
-                    BinOpKind::Ge  => insts.push(Inst::Ge),
-                    BinOpKind::Lt  => insts.push(Inst::Lt),
-                    BinOpKind::Le  => insts.push(Inst::Le),
-                }
-            },
-
-            Expr::Var(name) => {
-                insts.push(Inst::GetLocal(st.var_sp2_offset(name)));
-            },
-
-            Expr::Num(num) => insts.push(Inst::Const(*num)),
-
-            _ => unreachable!()
+    match expr {
+        Expr::Var(name) => insts.push(Inst::GetLocal(st.var_sp2_offset(name))),
+        Expr::Num(n)    => insts.push(Inst::Const(*n)),
+        Expr::FnCall { .. } => todo!(),
+        Expr::BinOp { lhs, rhs, op } => {
+            compile_expr(ast, st, insts, lhs);
+            compile_expr(ast, st, insts, rhs);
+            match op {
+                BinOpKind::And => insts.push(Inst::And),
+                BinOpKind::Or  => insts.push(Inst::Or),
+                BinOpKind::Add => insts.push(Inst::Add),
+                BinOpKind::Sub => insts.push(Inst::Sub),
+                BinOpKind::Mul => insts.push(Inst::Mul),
+                BinOpKind::Div => insts.push(Inst::Div),
+                //BinOpKind::Mod => insts.push(Inst::Mod),
+                BinOpKind::Eq  => insts.push(Inst::Eq),
+                BinOpKind::Ne  => insts.push(Inst::Ne),
+                BinOpKind::Gt  => insts.push(Inst::Gt),
+                BinOpKind::Ge  => insts.push(Inst::Ge),
+                BinOpKind::Lt  => insts.push(Inst::Lt),
+                BinOpKind::Le  => insts.push(Inst::Le),
+            }
         }
-        expr.start += 1;
     }
 }
 
@@ -325,12 +319,12 @@ fn compile_block(
     for stmt in block {
         match &stmt.kind {
             StmtKind::VarAssign { name, expr } => {
-                compile_expr(ast, st, insts, expr.clone());
+                compile_expr(ast, st, insts, expr);
                 insts.push(Inst::SetLocal(st.var_sp2_offset(name)));
-            }
+            },
 
             StmtKind::If { cond, then, elze } => {
-                compile_expr(ast, st, insts, cond.clone());
+                compile_expr(ast, st, insts, cond);
                 insts.push(Inst::JmpIf(insts.len()+2));
                 jmpbuf[0] = insts.len();
                 insts.push(Inst::Nop);
@@ -350,7 +344,7 @@ fn compile_block(
             StmtKind::For { cond, body } => {
                 // condition
                 jmpbuf[0] = insts.len();
-                compile_expr(ast, st, insts, cond.clone());
+                compile_expr(ast, st, insts, cond);
                 insts.push(Inst::JmpIf(insts.len()+2));
                 jmpbuf[1] = insts.len();
                 insts.push(Inst::Nop);

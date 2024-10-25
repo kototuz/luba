@@ -60,13 +60,13 @@ impl<'a> Analyzer<'a> {
                 },
 
                 StmtKind::If { cond, then, elze } => {
-                    self.analyze_expr(cond.clone());
+                    self.analyze_expr(cond);
                     self.analyze_block(then);
                     self.analyze_block(elze);
                 },
 
                 StmtKind::For { cond, body } => {
-                    self.analyze_expr(cond.clone());
+                    self.analyze_expr(cond);
                     self.analyze_block(body);
                 },
 
@@ -74,20 +74,30 @@ impl<'a> Analyzer<'a> {
                     if !self.local_st.contains(&name) {
                         semantic_err!(stmt.loc, "Assignment to undeclared variable `{name}`");
                     }
-                    self.analyze_expr(expr.clone());
+                    self.analyze_expr(expr);
                 },
             }
         }
     }
 
-    fn analyze_expr(&self, mut expr: ExprRange) {
-        while expr.start < expr.end {
-            if let Expr::Var(name) = self.ast.expr_buf[expr.start] {
-                if !self.local_st.contains(&name) {
-                    semantic_err!(expr.loc, "Variable `{name}` not found");
+    fn analyze_expr(&self, expr: &Expr) {
+        match expr {
+            Expr::Num(_) => {},
+            Expr::Var(name) => if !self.local_st.contains(name) {
+                todo!();
+            },
+            Expr::BinOp { lhs, rhs, .. } => {
+                self.analyze_expr(lhs);
+                self.analyze_expr(rhs);
+            },
+            Expr::FnCall { name, args } => {
+                if !self.global_st.contains(name) {
+                    todo!();
                 }
-            }
-            expr.start += 1;
+                for arg in args {
+                    self.analyze_expr(arg);
+                }
+            },
         }
     }
 }
