@@ -8,21 +8,29 @@ type FnDeclIdx = usize;
 
 pub struct Analyzer<'a> {
     pub global_st: HashMap<&'a str, FnDecl>,
-    pub local_st: SymbolTable<'a>,
+    pub local_st:  HashMap<&'a str, usize>,
+    pub local_idx: usize,
+    pub local_count: usize,
+    pub param_count: usize,
+    pub has_result: bool,
 }
 
 
 pub struct FnDecl {
-    param_count: usize,
-    ip: usize,
-    has_result: bool,
+    pub param_count: usize,
+    pub has_result: bool,
+    pub ip: usize,
 }
 
 impl<'a> Analyzer<'a> {
     pub fn new() -> Self {
         Self {
             global_st: HashMap::new(),
-            local_st: SymbolTable::new(),
+            local_st: HashMap::new(),
+            local_idx:   0,
+            param_count: 0,
+            local_count: 0,
+            has_result:  false,
         }
     }
 
@@ -35,35 +43,40 @@ impl<'a> Analyzer<'a> {
             );
         }
 
+        self.local_idx = if fn_decl.has_result { 1 } else { 0 };
+        self.local_st.clear();
         self.global_st.insert(fn_decl.name, FnDecl {
             ip, param_count: fn_decl.params.len(),
             has_result: fn_decl.has_result
         });
 
+        self.param_count = fn_decl.params.len();
         for param in &fn_decl.params {
-            self.local_st.push(param);
+            self.local_st.insert(param, self.local_idx);
+            self.local_idx += 1;
         }
 
+        self.has_result = fn_decl.has_result;
+
+        self.local_idx += 2; // this slots reserved for ip and sp2
         self.analyze_block(&fn_decl.body);
+        self.local_count = self.local_st.len() - self.param_count;
     }
 
     pub fn var_sp2_offset(&self, name: &'a str) -> usize {
-        for (i, entry) in self.local_st.iter().enumerate() {
-            if *entry == name {
-                return i;
-            }
-        }
-        panic!("name `{name}` is not in ast or you forget to analyze the fn_decl before");
+        *self.local_st.get(name)
+            .expect("the name is not in ast or you forget to analyze the fn_decl before")
     }
 
     fn analyze_block(&mut self, block: &Block<'a>) {
         for stmt in block {
             match &stmt.kind {
                 StmtKind::VarDecl(name) => {
-                    if self.local_st.contains(&name) {
+                    if self.local_st.contains_key(name) {
                         semantic_err!(stmt.loc, "Redeclaration of variable `{name}`");
                     }
-                    self.local_st.push(name);
+                    self.local_st.insert(name, self.local_idx);
+                    self.local_idx += 1;
                 },
 
                 StmtKind::If { cond, then, elze } => {
@@ -78,11 +91,24 @@ impl<'a> Analyzer<'a> {
                 },
 
                 StmtKind::VarAssign { name, expr } => {
-                    if !self.local_st.contains(&name) {
+                    if !self.local_st.contains_key(name) {
                         semantic_err!(stmt.loc, "Assignment to undeclared variable `{name}`");
                     }
                     self.analyze_expr(expr);
                 },
+
+                StmtKind::ReturnVal(expr) => {
+                    if !self.has_result {
+                        semantic_err!(stmt.loc, "The function doesn't return value");
+                    }
+                    self.analyze_expr(expr)
+                },
+
+                StmtKind::Return => {
+                    if self.has_result {
+                        semantic_err!(stmt.loc, "The function must return value");
+                    }
+                }
             }
         }
     }
@@ -90,7 +116,7 @@ impl<'a> Analyzer<'a> {
     fn analyze_expr(&self, expr: &Expr) {
         match expr {
             Expr::Num(_) => {},
-            Expr::Var(name) => if !self.local_st.contains(name) {
+            Expr::Var(name) => if !self.local_st.contains_key(name) {
                 todo!();
             },
             Expr::BinOp { lhs, rhs, .. } => {
@@ -98,6 +124,11 @@ impl<'a> Analyzer<'a> {
                 self.analyze_expr(rhs);
             },
             Expr::FnCall { name, args } => {
+                if let Some(fn_decl) = self.global_st.get(name) {
+                    if args.len() != fn_decl.param_count {
+                        panic!("function accepts only {} arg/s", fn_decl.param_count);
+                    }
+                }
                 if self.global_st.get(name).is_none() {
                     todo!();
                 }
@@ -109,3 +140,4 @@ impl<'a> Analyzer<'a> {
     }
 }
 
+// TODO: the analyzer consists of elements that related to `FnDecl`

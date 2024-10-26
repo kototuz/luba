@@ -33,6 +33,8 @@ pub struct FnDecl<'a> {
 pub enum StmtKind<'a> {
     VarAssign { name: &'a str, expr: Expr },
     VarDecl(&'a str),
+    ReturnVal(Expr),
+    Return,
     If { cond: Expr, then: Block<'a>, elze: Block<'a> },
     For { cond: Expr, body: Block<'a> },
 }
@@ -189,6 +191,22 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
                         }
                     });
                     continue;
+                }
+            },
+
+            Token::Keyword(Keyword::Return) => {
+                if let Token::Punct(Punct::Semicolon) = lex.expect_peek_any() {
+                    lex.next_any();
+                    block.push(Stmt {
+                        loc: lex.loc.clone(),
+                        kind: StmtKind::Return
+                    })
+                } else {
+                    block.push(Stmt {
+                        loc: lex.loc.clone(),
+                        kind: StmtKind::ReturnVal(parse_expr(lex, 0))
+                    });
+                    lex.expect_punct(Punct::Semicolon);
                 }
             },
 

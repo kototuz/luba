@@ -270,8 +270,9 @@ enum Inst {
     Gt, Ge,
     Lt, Le,
     And, Or,
-    RegAdd(Reg, usize),
+    RegAdd(Reg, usize), RegSub(Reg, usize),
     RegCp(Reg, Reg),
+    RegGet(Reg), RegSet(Reg),
     GetLocal(usize), SetLocal(usize),
     Const(i32),
     JmpIf(usize), Jmp(usize)
@@ -285,7 +286,17 @@ fn compile_expr(
     match expr {
         Expr::Var(name) => insts.push(Inst::GetLocal(st.var_sp2_offset(name))),
         Expr::Num(n)    => insts.push(Inst::Const(*n)),
-        Expr::FnCall { .. } => todo!(),
+        Expr::FnCall { name, args } => {
+            let fn_decl = st.global_st.get(name).unwrap();
+            insts.push(Inst::RegAdd(Reg::SP, 1));
+            for arg in args {
+                compile_expr(st, insts, arg);
+            }
+
+            insts.push(Inst::RegGet(Reg::IP));
+            insts.push(Inst::Jmp(fn_decl.ip));
+            insts.push(Inst::RegSub(Reg::SP, fn_decl.param_count));
+        },
         Expr::BinOp { lhs, rhs, op } => {
             compile_expr(st, insts, lhs);
             compile_expr(st, insts, rhs);
@@ -352,6 +363,20 @@ fn compile_block(
                 insts.push(Inst::Jmp(jmpbuf[0])); // repeat
                 insts[jmpbuf[1]] = Inst::Jmp(insts.len()); // end
             },
+
+            StmtKind::ReturnVal(expr) => {
+                compile_expr(st, insts, expr);
+                insts.push(Inst::SetLocal(0));
+                insts.push(Inst::RegSub(Reg::SP, st.local_count));
+                insts.push(Inst::RegSet(Reg::SP2));
+                insts.push(Inst::RegSet(Reg::IP));
+            },
+
+            StmtKind::Return => {
+                insts.push(Inst::RegSub(Reg::SP, st.local_count));
+                insts.push(Inst::RegSet(Reg::SP2));
+                insts.push(Inst::RegSet(Reg::IP));
+            },
             
             StmtKind::VarDecl(_) => {}, // skip
         }
@@ -364,8 +389,14 @@ pub fn compile(ast: Ast) {
 
     for fn_decl in &ast.fn_decls {
         analyzer.analyze_fn_decl(fn_decl, insts.len());
+        insts.push(Inst::RegGet(Reg::SP2));
         insts.push(Inst::RegCp(Reg::SP2, Reg::SP));
-        insts.push(Inst::RegAdd(Reg::SP, analyzer.local_st.len()));
+        if fn_decl.has_result {
+            insts.push(Inst::RegSub(Reg::SP2, analyzer.param_count+3));
+        } else {
+            insts.push(Inst::RegSub(Reg::SP2, analyzer.param_count+2));
+        }
+        insts.push(Inst::RegAdd(Reg::SP, analyzer.local_count));
         compile_block(
             &analyzer,
             &mut insts,
