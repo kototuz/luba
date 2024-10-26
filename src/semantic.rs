@@ -1,43 +1,50 @@
-use crate::parser::*;
+use std::collections::HashMap;
 
+use crate::parser::*;
 use super::{semantic_err, exit_failure};
 
 type SymbolTable<'a> = Vec<&'a str>;
 type FnDeclIdx = usize;
 
 pub struct Analyzer<'a> {
-    pub global_st: SymbolTable<'a>,
+    pub global_st: HashMap<&'a str, FnDecl>,
     pub local_st: SymbolTable<'a>,
-    ast: &'a Ast<'a>,
 }
 
 
+pub struct FnDecl {
+    param_count: usize,
+    ip: usize,
+    has_result: bool,
+}
 
 impl<'a> Analyzer<'a> {
-    pub fn new(ast: &'a Ast<'a>) -> Self {
+    pub fn new() -> Self {
         Self {
-            global_st: SymbolTable::new(),
+            global_st: HashMap::new(),
             local_st: SymbolTable::new(),
-            ast
         }
     }
 
-    pub fn analyze_fn_decl(&mut self, idx: FnDeclIdx) {
-        let name = self.ast.fn_decls[idx].name;
-        if self.global_st.contains(&self.ast.fn_decls[idx].name) {
+    pub fn analyze_fn_decl(&mut self, fn_decl: &crate::parser::FnDecl<'a>, ip: usize) {
+        if self.global_st.get(&fn_decl.name).is_some() {
             semantic_err!(
-                self.ast.fn_decls[idx].loc,
-                "Redeclaration of function `{name}`",
+                fn_decl.loc,
+                "Redeclaration of function `{}`",
+                fn_decl.name
             );
         }
 
-        self.global_st.push(name);
+        self.global_st.insert(fn_decl.name, FnDecl {
+            ip, param_count: fn_decl.params.len(),
+            has_result: fn_decl.has_result
+        });
 
-        for param in &self.ast.fn_decls[idx].params {
+        for param in &fn_decl.params {
             self.local_st.push(param);
         }
 
-        self.analyze_block(&self.ast.fn_decls[idx].body);
+        self.analyze_block(&fn_decl.body);
     }
 
     pub fn var_sp2_offset(&self, name: &'a str) -> usize {
@@ -91,7 +98,7 @@ impl<'a> Analyzer<'a> {
                 self.analyze_expr(rhs);
             },
             Expr::FnCall { name, args } => {
-                if !self.global_st.contains(name) {
+                if self.global_st.get(name).is_none() {
                     todo!();
                 }
                 for arg in args {

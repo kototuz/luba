@@ -278,7 +278,6 @@ enum Inst {
 }
 
 fn compile_expr(
-    ast: &Ast,
     st: &semantic::Analyzer,
     insts: &mut Vec<Inst>,
     expr: &Expr
@@ -288,8 +287,8 @@ fn compile_expr(
         Expr::Num(n)    => insts.push(Inst::Const(*n)),
         Expr::FnCall { .. } => todo!(),
         Expr::BinOp { lhs, rhs, op } => {
-            compile_expr(ast, st, insts, lhs);
-            compile_expr(ast, st, insts, rhs);
+            compile_expr(st, insts, lhs);
+            compile_expr(st, insts, rhs);
             match op {
                 BinOpKind::And => insts.push(Inst::And),
                 BinOpKind::Or  => insts.push(Inst::Or),
@@ -310,7 +309,6 @@ fn compile_expr(
 }
 
 fn compile_block(
-    ast: &Ast,
     st: &semantic::Analyzer,
     insts: &mut Vec<Inst>,
     block: &Block
@@ -319,22 +317,22 @@ fn compile_block(
     for stmt in block {
         match &stmt.kind {
             StmtKind::VarAssign { name, expr } => {
-                compile_expr(ast, st, insts, expr);
+                compile_expr(st, insts, expr);
                 insts.push(Inst::SetLocal(st.var_sp2_offset(name)));
             },
 
             StmtKind::If { cond, then, elze } => {
-                compile_expr(ast, st, insts, cond);
+                compile_expr(st, insts, cond);
                 insts.push(Inst::JmpIf(insts.len()+2));
                 jmpbuf[0] = insts.len();
                 insts.push(Inst::Nop);
-                compile_block(ast, st, insts, then);
+                compile_block(st, insts, then);
 
                 if !elze.is_empty() {
                     jmpbuf[1] = insts.len();
                     insts.push(Inst::Nop);
                     insts[jmpbuf[0]] = Inst::Jmp(insts.len());
-                    compile_block(ast, st, insts, elze);
+                    compile_block(st, insts, elze);
                     insts[jmpbuf[1]] = Inst::Jmp(insts.len());
                 } else {
                     insts[jmpbuf[0]] = Inst::Jmp(insts.len());
@@ -344,13 +342,13 @@ fn compile_block(
             StmtKind::For { cond, body } => {
                 // condition
                 jmpbuf[0] = insts.len();
-                compile_expr(ast, st, insts, cond);
+                compile_expr(st, insts, cond);
                 insts.push(Inst::JmpIf(insts.len()+2));
                 jmpbuf[1] = insts.len();
                 insts.push(Inst::Nop);
 
                 // body
-                compile_block(ast, st, insts, body);
+                compile_block(st, insts, body);
                 insts.push(Inst::Jmp(jmpbuf[0])); // repeat
                 insts[jmpbuf[1]] = Inst::Jmp(insts.len()); // end
             },
@@ -362,18 +360,16 @@ fn compile_block(
 
 pub fn compile(ast: Ast) {
     let mut insts: Vec<Inst> = Vec::new();
-    let mut analyzer = semantic::Analyzer::new(&ast);
+    let mut analyzer = semantic::Analyzer::new();
 
-
-    for fn_decl_idx in 0..ast.fn_decls.len() {
-        analyzer.analyze_fn_decl(fn_decl_idx);
+    for fn_decl in &ast.fn_decls {
+        analyzer.analyze_fn_decl(fn_decl, insts.len());
         insts.push(Inst::RegCp(Reg::SP2, Reg::SP));
         insts.push(Inst::RegAdd(Reg::SP, analyzer.local_st.len()));
         compile_block(
-            &ast,
             &analyzer,
             &mut insts,
-            &ast.fn_decls[fn_decl_idx].body
+            &fn_decl.body
         );
     }
 
