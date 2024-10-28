@@ -285,7 +285,8 @@ enum Inst {
     SetLocal(usize),
     Const(i32),
     JmpIf(usize),
-    Jmp(usize)
+    Jmp(usize),
+    Call(usize),
 }
 
 impl fmt::Display for Reg {
@@ -313,8 +314,7 @@ fn compile_expr(
                 compile_expr(st, insts, arg);
             }
 
-            insts.push(Inst::RegGet(Reg::IP));
-            insts.push(Inst::Jmp(fn_decl.ip));
+            insts.push(Inst::Call(fn_decl.ip));
             insts.push(Inst::RegSub(Reg::SP, fn_decl.param_count));
         },
         Expr::BinOp { lhs, rhs, op } => {
@@ -409,7 +409,6 @@ pub fn compile(ast: Ast, file: &mut File) {
 
     insts.push(Inst::Nop);
     insts.push(Inst::Nop);
-    insts.push(Inst::Nop);
 
     for fn_decl in &ast.fn_decls {
         analyzer.analyze_fn_decl(fn_decl, insts.len());
@@ -434,13 +433,13 @@ pub fn compile(ast: Ast, file: &mut File) {
             compilation_err!("The main function is not defined");
         }).ip;
 
-    insts[0] = Inst::RegGet(Reg::IP);
-    insts[1] = Inst::Jmp(entry_point);
-    insts[2] = Inst::Jmp(1000);
+    insts[0] = Inst::Call(entry_point);
+    insts[1] = Inst::Jmp(1000);
 
     for inst in &insts {
         match inst {
             Inst::Nop               => {},                                                          
+            Inst::Call(ip)          => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/call {{_:{ip}}}'"); },
             Inst::Add               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/add'"); },
             Inst::Sub               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/sub'"); },
             Inst::Mul               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/mul'"); },
