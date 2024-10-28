@@ -121,47 +121,6 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
     loop {
         let loc = lex.loc.clone();
         match token {
-            Token::Ident(var_name) => {
-                match lex.expect_any() {
-                    Token::Punct(Punct::Semicolon) => {
-                        block.push(Stmt {
-                            loc,
-                            kind: StmtKind::VarDecl(var_name)
-                        });
-                    },
-
-                    Token::Punct(Punct::Colon) => {
-                        block.push(Stmt {
-                            loc: loc.clone(),
-                            kind: StmtKind::VarDecl(var_name)
-                        });
-
-                        lex.expect_punct(Punct::Eq);
-                        block.push(Stmt {
-                            loc,
-                            kind: StmtKind::VarAssign {
-                                name: var_name,
-                                expr: parse_expr(lex, 0),
-                            }
-                        });
-                        lex.expect_punct(Punct::Semicolon);
-                    },
-
-                    Token::Punct(Punct::Eq) => {
-                        block.push(Stmt {
-                            loc,
-                            kind: StmtKind::VarAssign {
-                                name: var_name,
-                                expr: parse_expr(lex, 0),
-                            }
-                        });
-                        lex.expect_punct(Punct::Semicolon);
-                    },
-
-                    t @ _ => { unexpected_token_err!(lex.loc, t); }
-                }
-            },
-
             Token::Keyword(Keyword::For) => {
                 block.push(Stmt {
                     loc, kind: StmtKind::For {
@@ -207,6 +166,47 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
                         kind: StmtKind::ReturnVal(parse_expr(lex, 0))
                     });
                     lex.expect_punct(Punct::Semicolon);
+                }
+            },
+
+            Token::Ident(var_name) => {
+                match lex.expect_any() {
+                    Token::Punct(Punct::Semicolon) => {
+                        block.push(Stmt {
+                            loc,
+                            kind: StmtKind::VarDecl(var_name)
+                        });
+                    },
+
+                    Token::Punct(Punct::Colon) => {
+                        block.push(Stmt {
+                            loc: loc.clone(),
+                            kind: StmtKind::VarDecl(var_name)
+                        });
+
+                        lex.expect_punct(Punct::Eq);
+                        block.push(Stmt {
+                            loc,
+                            kind: StmtKind::VarAssign {
+                                name: var_name,
+                                expr: parse_expr(lex, 0),
+                            }
+                        });
+                        lex.expect_punct(Punct::Semicolon);
+                    },
+
+                    Token::Punct(Punct::Eq) => {
+                        block.push(Stmt {
+                            loc,
+                            kind: StmtKind::VarAssign {
+                                name: var_name,
+                                expr: parse_expr(lex, 0),
+                            }
+                        });
+                        lex.expect_punct(Punct::Semicolon);
+                    },
+
+                    t @ _ => { unexpected_token_err!(lex.loc, t); }
                 }
             },
 

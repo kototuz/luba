@@ -1,8 +1,6 @@
-fn add(a, b) int {
-    return a + b;
-}
+fn add(a, b) int { return a + b; }
 
 fn main() {
-    result := add(12, 13);
+    result := add(12, 69);
     return;
 }

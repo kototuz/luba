@@ -1,5 +1,4 @@
 use std::io::prelude::*;
-use std::io::Result as IOResult;
 use std::fs::File;
 use std::fmt;
 
@@ -7,15 +6,15 @@ use crate::semantic;
 use super::{exit_failure, compilation_err};
 use crate::parser::*;
 use crate::lexer::BinOpKind;
-//
-//
-//macro_rules! write_ln {
-//    ($file:ident, $($args:tt)*) => {
-//        let _ = writeln!($file, $($args)*).unwrap_or_else(|err| {
-//            compilation_err!("Could not write to a file: {err}");
-//        });
-//    }
-//}
+
+
+macro_rules! write_ln {
+    ($file:ident, $($args:tt)*) => {
+        let _ = writeln!($file, $($args)*).unwrap_or_else(|err| {
+            compilation_err!("Could not write to a file: {err}");
+        });
+    }
+}
 //
 //struct SetFromCmd<'a>(SetTarget<'a>);
 //enum SetTarget<'a> {
@@ -264,18 +263,39 @@ enum Reg { SP, SP2, IP }
 #[derive(Debug)]
 enum Inst {
     Nop,
-    Add, Sub,
-    Mul, Div, Mod,
-    Eq, Ne,
-    Gt, Ge,
-    Lt, Le,
-    And, Or,
-    RegAdd(Reg, usize), RegSub(Reg, usize),
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Ne,
+    Gt,
+    Ge,
+    Lt,
+    Le,
+    And,
+    Or,
+    RegAdd(Reg, usize),
+    RegSub(Reg, usize),
     RegCp(Reg, Reg),
-    RegGet(Reg), RegSet(Reg),
-    GetLocal(usize), SetLocal(usize),
+    RegGet(Reg),
+    RegSet(Reg),
+    GetLocal(usize),
+    SetLocal(usize),
     Const(i32),
-    JmpIf(usize), Jmp(usize)
+    JmpIf(usize),
+    Jmp(usize)
+}
+
+impl fmt::Display for Reg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Reg::SP  => write!(f, "sp"),
+            Reg::SP2 => write!(f, "sp2"),
+            Reg::IP  => write!(f, "ip"),
+        }
+    }
 }
 
 fn compile_expr(
@@ -383,9 +403,13 @@ fn compile_block(
     }
 }
 
-pub fn compile(ast: Ast) {
+pub fn compile(ast: Ast, file: &mut File) {
     let mut insts: Vec<Inst> = Vec::new();
     let mut analyzer = semantic::Analyzer::new();
+
+    insts.push(Inst::Nop);
+    insts.push(Inst::Nop);
+    insts.push(Inst::Nop);
 
     for fn_decl in &ast.fn_decls {
         analyzer.analyze_fn_decl(fn_decl, insts.len());
@@ -404,12 +428,48 @@ pub fn compile(ast: Ast) {
         );
     }
 
-    //insts.push(Inst::RegCp(Reg::SP2, Reg::SP));
-    //insts.push(Inst::RegAdd(Reg::SP, st.0.len()));
 
-    //compile_block(&ast, &st, &mut insts, &ast.stmts);
+    let entry_point = analyzer.global_st.get("main").
+        unwrap_or_else(|| {
+            compilation_err!("The main function is not defined");
+        }).ip;
+
+    insts[0] = Inst::RegGet(Reg::IP);
+    insts[1] = Inst::Jmp(entry_point);
+    insts[2] = Inst::Jmp(1000);
+
+    for inst in &insts {
+        match inst {
+            Inst::Nop               => {},                                                          
+            Inst::Add               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/add'"); },
+            Inst::Sub               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/sub'"); },
+            Inst::Mul               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/mul'"); },
+            Inst::Div               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/div'"); },
+            Inst::Mod               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/mod'"); },
+            Inst::Eq                => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/eq'"); },
+            Inst::Ne                => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/ne'"); },
+            Inst::Gt                => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/gt'"); },
+            Inst::Ge                => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/ge'"); },
+            Inst::Lt                => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/lt'"); },
+            Inst::Le                => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/le'"); },
+            Inst::And               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/and'"); },
+            Inst::Or                => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/or'"); },
+            Inst::RegGet(reg)       => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/get_reg {{_:{reg}}}'"); },
+            Inst::RegSet(reg)       => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/set_reg {{_:{reg}}}'"); },
+            Inst::GetLocal(n)       => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/get_local {{_:{n}}}'"); },
+            Inst::SetLocal(n)       => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/set_local {{_:{n}}}'"); },
+            Inst::Const(n)          => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/const {{_:{n}}}'"); },
+            Inst::JmpIf(n)          => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/jmp_if {{_:{n}}}'"); },
+            Inst::RegAdd(reg, n)    => { write_ln!(file, "data modify storage redvm insts append value 'scoreboard players add {reg} redvm.regs {n}'"); },
+            Inst::RegSub(reg, n)    => { write_ln!(file, "data modify storage redvm insts append value 'scoreboard players remove {reg} redvm.regs {n}'"); },
+            Inst::RegCp(reg1, reg2) => { write_ln!(file, "data modify storage redvm insts append value 'scoreboard players operation {reg1} redvm.regs = {reg2} redvm.regs'"); },
+            Inst::Jmp(n)            => { write_ln!(file, "data modify storage redvm insts append value 'scoreboard players set ip redvm.regs {n}'"); },
+        }
+    }
 
     for (i, inst) in insts.iter().enumerate() {
         println!("{i}: {inst:?}");
     }
+
+    println!("{:?}", ast.fn_decls[0].body);
 }

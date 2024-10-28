@@ -121,7 +121,7 @@ impl<'a> Lexer<'a> {
     fn keyword(&mut self) -> Option<Keyword> {
         let mut end: usize = self.pos+1;
         while end < self.src.len() &&
-            !self.src[end].is_ascii_whitespace() {
+            self.src[end].is_ascii_alphabetic() {
                 end += 1;
         }
 

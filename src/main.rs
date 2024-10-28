@@ -59,24 +59,33 @@ macro_rules! compilation_err {
     }
 }
 
+macro_rules! error {
+    ($($arg:tt)*) => {
+        eprint!("ERROR: ");
+        eprintln!($($arg)*);
+        exit_failure!();
+    };
+}
+
 fn main() {
     let file_path = std::env::args().nth(1).unwrap_or_else(|| {
-        eprintln!("ERROR: source file must be provided");
-        exit_failure!();
+        error!("Source file must be provided");
     });
 
     let mut src_file = std::fs::File::open(&file_path).unwrap_or_else(|err| {
-        eprintln!("ERROR: could not open file `{file_path}`: {err}");
-        exit_failure!();
+        error!("Could not open file `{file_path}`: {err}");
     });
 
     let mut buffer = String::new();
     let _ = src_file.read_to_string(&mut buffer).unwrap_or_else(|err| {
-        eprintln!("ERROR: could not read file `{file_path}`: {err}");
-        exit_failure!();
+        error!("Could not read file `{file_path}`: {err}");
+    });
+
+    let mut output = std::fs::File::create("out.mcfunction").unwrap_or_else(|err| {
+        error!("Could not create an output file: {err}");
     });
 
     let mut lexer = lexer::Lexer::new(buffer.as_bytes()); // lexical analysis (lazy)
     let ast = parser::parse(&mut lexer);                  // syntax  analysis
-    compiler::compile(ast);                               // compilation
+    compiler::compile(ast, &mut output);                  // compilation
 }
