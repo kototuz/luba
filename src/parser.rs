@@ -320,6 +320,7 @@ fn bin_op_prec(bin_op_kind: BinOpKind) -> u8 {
     }
 }
 
+// TODO: log function for tests
 // TODO: expression location
 
 //#[cfg(test)]
