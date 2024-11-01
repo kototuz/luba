@@ -287,6 +287,7 @@ enum Inst {
     JmpIf(usize),
     Jmp(usize),
     Call(usize),
+    Log(usize),
 }
 
 impl fmt::Display for Reg {
@@ -399,6 +400,14 @@ fn compile_block(
             },
 
             StmtKind::FnCall { name, args } => {
+                if *name == "log" {
+                    assert_eq!(args.len(), 1);
+                    if let Expr::Var(name) = args[0] {
+                        insts.push(Inst::Log(st.var_sp2_offset(name)));
+                    } else { panic!(); }
+                    return;
+                }
+
                 for arg in args {
                     compile_expr(st, insts, arg);
                 }
@@ -447,6 +456,7 @@ pub fn compile(ast: Ast, file: &mut File) {
     for inst in &insts {
         match inst {
             Inst::Nop               => {},                                                          
+            Inst::Log(local)        => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/log {{_:{local}}}'"); }
             Inst::Call(ip)          => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/call {{_:{ip}}}'"); },
             Inst::Add               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/add'"); },
             Inst::Sub               => { write_ln!(file, "data modify storage redvm insts append value 'function redvm:insts/sub'"); },
