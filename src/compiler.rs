@@ -397,6 +397,14 @@ fn compile_block(
                 insts.push(Inst::RegSet(Reg::SP2));
                 insts.push(Inst::RegSet(Reg::IP));
             },
+
+            StmtKind::FnCall { name, args } => {
+                for arg in args {
+                    compile_expr(st, insts, arg);
+                }
+                let fn_decl = st.global_st.get(name).unwrap();
+                insts.push(Inst::Call(fn_decl.ip));
+            },
             
             StmtKind::VarDecl(_) => {}, // skip
         }

@@ -31,6 +31,7 @@ pub struct FnDecl<'a> {
 
 #[derive(Debug)]
 pub enum StmtKind<'a> {
+    FnCall { name: &'a str, args: Vec<Expr> },
     VarAssign { name: &'a str, expr: Expr },
     VarDecl(&'a str),
     ReturnVal(Expr),
@@ -117,11 +118,11 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
     let mut block = Block::new();
 
     lex.expect_punct(Punct::OpenCurly);
-    let mut token = lex.expect_any();
     loop {
         let loc = lex.loc.clone();
-        match token {
+        match lex.expect_peek_any() {
             Token::Keyword(Keyword::For) => {
+                lex.next_any();
                 block.push(Stmt {
                     loc, kind: StmtKind::For {
                         cond: parse_expr(lex, 0),
@@ -131,29 +132,29 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
             },
 
             Token::Keyword(Keyword::If) => {
+                lex.next_any();
                 let cond = parse_expr(lex, 0);
                 let then = parse_block(lex);
-                token = lex.expect_any();
-                if let Token::Keyword(Keyword::Else) = token {
-                    let elze = parse_block(lex);
+                if let Token::Keyword(Keyword::Else) = lex.expect_peek_any() {
+                    lex.next_any();
                     block.push(Stmt {
-                        loc,
-                        kind: StmtKind::If {
-                            cond, then, elze
+                        loc, kind: StmtKind::If {
+                            cond, then,
+                            elze: parse_block(lex)
                         }
-                    });
+                    })
                 } else {
                     block.push(Stmt {
-                        loc,
-                        kind: StmtKind::If {
-                            cond, then, elze: Vec::new(),
+                        loc, kind: StmtKind::If {
+                            cond, then,
+                            elze: Vec::new()
                         }
                     });
-                    continue;
                 }
             },
 
             Token::Keyword(Keyword::Return) => {
+                lex.next_any();
                 if let Token::Punct(Punct::Semicolon) = lex.expect_peek_any() {
                     lex.next_any();
                     block.push(Stmt {
@@ -170,6 +171,7 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
             },
 
             Token::Ident(var_name) => {
+                lex.next_any();
                 match lex.expect_any() {
                     Token::Punct(Punct::Semicolon) => {
                         block.push(Stmt {
@@ -206,15 +208,48 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
                         lex.expect_punct(Punct::Semicolon);
                     },
 
+                    Token::Punct(Punct::OpenParen) => {
+                        let mut args: Vec<Expr> = Vec::new();
+
+                        if lex.expect_peek_any() == Token::Punct(Punct::CloseParen) {
+                            lex.next_any();
+                            lex.expect_punct(Punct::Semicolon);
+                            block.push(Stmt {
+                                loc, kind: StmtKind::FnCall {
+                                    args, name: var_name
+                                }
+                            });
+                            continue;
+                        }
+
+                        loop {
+                            args.push(parse_expr(lex, 0));
+                            match lex.expect_any() {
+                                Token::Punct(Punct::Comma) => {},
+                                Token::Punct(Punct::CloseParen) => break,
+                                t @ _ => { unexpected_token_err!(lex.loc, t); }
+                            }
+                        }
+
+                        lex.expect_punct(Punct::Semicolon);
+                        block.push(Stmt {
+                            loc, kind: StmtKind::FnCall {
+                                args, name: var_name
+                            }
+                        });
+                    },
+
                     t @ _ => { unexpected_token_err!(lex.loc, t); }
                 }
             },
 
-            Token::Punct(Punct::CloseCurly) => break,
+            Token::Punct(Punct::CloseCurly) => {
+                lex.next_any();
+                break;
+            },
 
             t @ _ => { unexpected_token_err!(lex.loc, t); }
         }
-        token = lex.expect_any();
     }
 
     block

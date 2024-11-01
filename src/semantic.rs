@@ -108,7 +108,16 @@ impl<'a> Analyzer<'a> {
                     if self.has_result {
                         semantic_err!(stmt.loc, "The function must return value");
                     }
-                }
+                },
+
+                StmtKind::FnCall { name, args } => {
+                    if self.global_st.get(name).is_none() {
+                        semantic_err!(stmt.loc, "Global function `{name}` is not defined");
+                    }
+                    for arg in args {
+                        self.analyze_expr(arg);
+                    }
+                },
             }
         }
     }
