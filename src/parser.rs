@@ -40,22 +40,32 @@ pub enum StmtKind<'a> {
     For { cond: Expr, body: Block<'a> },
 }
 
-#[derive(Debug, Clone)]
-pub struct ExprRange {
+#[derive(Debug, PartialEq)]
+pub struct Expr {
     pub loc: Loc,
-    pub start: ExprIdx,
-    pub end: ExprIdx,
+    pub kind: ExprKind
 }
 
-// TODO: add loc to better error reporting
 #[derive(Debug, PartialEq)]
-pub enum Expr {
-    FnCall { name: &'static str, args: Vec<Expr> },
-    BinOp { lhs: Box<Expr>, rhs: Box<Expr>, op: BinOpKind },
+pub enum ExprKind {
+    FnCall(Box<FnCallExpr>),
+    BinOp(Box<BinOpExpr>),
     Var(&'static str),
     Num(i32),
 }
 
+#[derive(Debug, PartialEq)]
+pub struct FnCallExpr {
+    pub name: &'static str,
+    pub args: Vec<Expr>
+}
+
+#[derive(Debug, PartialEq)]
+pub struct BinOpExpr {
+    pub lhs: Expr,
+    pub rhs: Expr,
+    pub op: BinOpKind
+}
 
 
 pub fn parse<'a>(lex: &mut Lexer<'a>) -> Ast<'a> {
@@ -257,19 +267,19 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Expr::Var(nam) => write!(f, "{nam}"),
-            Expr::Num(n)   => write!(f, "{n}"),
-            Expr::BinOp { lhs, rhs, op } => {
-                write!(f, "[{op} ")?;
-                write!(f, "{lhs} ")?;
-                write!(f, "{rhs}]")
+        match &self.kind {
+            ExprKind::Var(nam) => write!(f, "{nam}"),
+            ExprKind::Num(n)   => write!(f, "{n}"),
+            ExprKind::BinOp(data) => {
+                write!(f, "[{} ", data.op)?;
+                write!(f, "{} ", data.lhs)?;
+                write!(f, "{}]", data.rhs)
             },
-            Expr::FnCall { name, args } => {
-                write!(f, "{name}(")?;
-                write!(f, "{}", args[0])?;
-                for i in 1..args.len() {
-                    write!(f, ", {}", args[i])?;
+            ExprKind::FnCall(data) => {
+                write!(f, "{}(", data.name)?;
+                write!(f, "{}", data.args[0])?;
+                for i in 1..data.args.len() {
+                    write!(f, ", {}", data.args[i])?;
                 }
                 write!(f, ")")
             },
@@ -281,7 +291,7 @@ pub fn parse_expr(lex: &mut Lexer, prec: u8) -> Expr {
     // the implementation based on the Pratt Parsing algorithm
     let token: Token;
     let mut lhs = match lex.expect_any() {
-        Token::Number(n) => Expr::Num(n),
+        Token::Number(n) => Expr { loc: lex.loc.clone(), kind: ExprKind::Num(n) },
         Token::Ident(name) => {
             if lex.expect_peek_any() == Token::Punct(Punct::OpenParen) {
                 lex.next_any();
@@ -294,9 +304,18 @@ pub fn parse_expr(lex: &mut Lexer, prec: u8) -> Expr {
                         args.push(parse_expr(lex, 0));
                     }
                 }
-                Expr::FnCall { name, args }
+
+                Expr {
+                    loc: lex.loc.clone(),
+                    kind: ExprKind::FnCall(Box::new(FnCallExpr {
+                        name, args
+                    }))
+                }
             } else {
-                Expr::Var(name)
+                Expr {
+                    loc: lex.loc.clone(),
+                    kind: ExprKind::Var(name)
+                }
             }
         },
         Token::Punct(Punct::OpenParen) => {
@@ -326,11 +345,12 @@ pub fn parse_expr(lex: &mut Lexer, prec: u8) -> Expr {
                 } else {
                     lex.next_any();
                     let rhs = parse_expr(lex, this_prec);
-                    lhs = Expr::BinOp {
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                        op:  kind
-                    };
+                    lhs = Expr {
+                        loc: lex.loc.clone(),
+                        kind: ExprKind::BinOp(Box::new(BinOpExpr {
+                            lhs, rhs, op:  kind
+                        }))
+                    }
                 }
             },
 

@@ -305,23 +305,23 @@ fn compile_expr(
     insts: &mut Vec<Inst>,
     expr: &Expr
 ) {
-    match expr {
-        Expr::Var(name) => insts.push(Inst::GetLocal(st.var_sp2_offset(name))),
-        Expr::Num(n)    => insts.push(Inst::Const(*n)),
-        Expr::FnCall { name, args } => {
-            let fn_decl = st.global_st.get(name).unwrap();
+    match &expr.kind {
+        ExprKind::Var(name) => insts.push(Inst::GetLocal(st.var_sp2_offset(name))),
+        ExprKind::Num(n)    => insts.push(Inst::Const(*n)),
+        ExprKind::FnCall(data) => {
+            let fn_decl = st.global_st.get(data.name).unwrap();
             insts.push(Inst::RegAdd(Reg::SP, 1));
-            for arg in args {
+            for arg in &data.args {
                 compile_expr(st, insts, arg);
             }
 
             insts.push(Inst::Call(fn_decl.ip));
             insts.push(Inst::RegSub(Reg::SP, fn_decl.param_count));
         },
-        Expr::BinOp { lhs, rhs, op } => {
-            compile_expr(st, insts, lhs);
-            compile_expr(st, insts, rhs);
-            match op {
+        ExprKind::BinOp(data) => {
+            compile_expr(st, insts, &data.lhs);
+            compile_expr(st, insts, &data.rhs);
+            match data.op {
                 BinOpKind::And => insts.push(Inst::And),
                 BinOpKind::Or  => insts.push(Inst::Or),
                 BinOpKind::Add => insts.push(Inst::Add),
@@ -402,7 +402,7 @@ fn compile_block(
             StmtKind::FnCall { name, args } => {
                 if *name == "log" {
                     assert_eq!(args.len(), 1);
-                    if let Expr::Var(name) = args[0] {
+                    if let ExprKind::Var(name) = args[0].kind {
                         insts.push(Inst::Log(st.var_sp2_offset(name)));
                     } else { panic!(); }
                     return;

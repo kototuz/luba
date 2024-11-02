@@ -123,27 +123,26 @@ impl<'a> Analyzer<'a> {
     }
 
     fn analyze_expr(&self, expr: &Expr) {
-        match expr {
-            Expr::Num(_) => {},
-            Expr::Var(name) => if !self.local_st.contains_key(name) {
-                todo!();
-            },
-            Expr::BinOp { lhs, rhs, .. } => {
-                self.analyze_expr(lhs);
-                self.analyze_expr(rhs);
-            },
-            Expr::FnCall { name, args } => {
-                if let Some(fn_decl) = self.global_st.get(name) {
-                    if args.len() != fn_decl.param_count {
-                        panic!("function accepts only {} arg/s", fn_decl.param_count);
-                    }
+        match &expr.kind {
+            ExprKind::Num(_)       => {},
+            ExprKind::Var(name)    => {
+                if self.local_st.get(name).is_none() {
+                    semantic_err!(expr.loc, "Variable `{name}` doesn't exist");
                 }
-                if self.global_st.get(name).is_none() {
-                    todo!();
+            },
+
+            ExprKind::FnCall(data) => {
+                if self.global_st.get(data.name).is_none() {
+                    semantic_err!(expr.loc, "Function `{}` doesn't exist", data.name);
                 }
-                for arg in args {
+                for arg in &data.args {
                     self.analyze_expr(arg);
                 }
+            },
+
+            ExprKind::BinOp(data)  => {
+                self.analyze_expr(&data.lhs);
+                self.analyze_expr(&data.rhs);
             },
         }
     }
