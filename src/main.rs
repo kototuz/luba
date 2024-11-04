@@ -6,6 +6,8 @@ mod semantic;
 use std::io::prelude::*;
 use std::process::ExitCode;
 
+use parser::Ast;
+
 type Result<T> = std::result::Result<T, ()>;
 
 #[cfg(debug_assertions)]
@@ -81,11 +83,19 @@ fn main() {
         error!("Could not read file `{file_path}`: {err}");
     });
 
-    let mut output = std::fs::File::create("out.mcfunction").unwrap_or_else(|err| {
+    let output = std::fs::File::create("out.mcfunction").unwrap_or_else(|err| {
         error!("Could not create an output file: {err}");
     });
 
     let mut lexer = lexer::Lexer::new(buffer.as_bytes()); // lexical analysis (lazy)
-    let ast = parser::parse(&mut lexer);                  // syntax  analysis
-    compiler::compile(ast, &mut output);                  // compilation
+
+    let ast: Ast = parser::parse(&mut lexer);             // syntax  analysis
+    //println!("{ast:#?}");
+
+    //println!("===========================================");
+
+    let sem_data = semantic::Analyzer::analyze(&ast);     // semantic analyzis
+    //println!("{sem_data:#?}");
+
+    compiler::Compiler::compile(output, &ast, sem_data);
 }
