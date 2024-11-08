@@ -1,6 +1,6 @@
-fn add(a, b) int { return a + b; }
-
 fn main() {
-    result := add(12, 69);
-    return;
+    a := 10;
+    if a >= 10 {
+        a = a + 1;
+    }
 }

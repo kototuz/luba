@@ -188,7 +188,7 @@ impl<'a> Analyzer<'a> {
             this.global_scope.insert(fn_decl.name, &fn_decl);
 
             for i in 0..fn_decl.params.len() {
-                this.local_scope.insert(fn_decl.params[i], i);
+                this.local_scope.insert(fn_decl.params[i], i+1);
             }
 
             this.curr_fn_decl = &fn_decl;

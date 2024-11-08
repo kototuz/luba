@@ -97,5 +97,5 @@ fn main() {
     let sem_data = semantic::Analyzer::analyze(&ast);     // semantic analyzis
     //println!("{sem_data:#?}");
 
-    compiler::Compiler::compile(output, &ast, sem_data);
+    compiler::compile(output, &ast, sem_data);
 }
