@@ -1,18 +1,10 @@
 fn main() {
-    n           := 10;
-    num1        := 0;
-    num2        := 1;
-    nextnumber := num2;
-    count       := 1;
-
+    i := 0;
     for {
-        if count <= n {
-            @log nextnumber;
-            num1 = num2;
-            num2 = nextnumber;
-            nextnumber = num1 + num2;
-        } else {
-            break;
+        if i < 10 {
+            i = i + 1;
+            continue;
         }
+        break;
     }
 }

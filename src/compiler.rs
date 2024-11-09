@@ -481,8 +481,12 @@ use crate::{compilation_err, exit_failure, lexer::BinOpKind, parser::{Ast, Block
 
 type IP = usize;
 type FilePos = u64;
-type Label = IP;
 type JmpLabel = usize;
+
+struct Loop {
+    start: JmpLabel,
+    end:   JmpLabel,
+}
 
 struct CallLabelUsage<'a> {
     pos:  FilePos,
@@ -618,7 +622,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_block(&mut self, block: &Block<'a>, scope: &LocalScope, loopend: JmpLabel) {
+    fn compile_block(&mut self, block: &Block<'a>, scope: &LocalScope, lup: &Loop) {
         for stmt in block {
             match &stmt.kind {
                 StmtKind::VarDecl(_) => {},
@@ -659,7 +663,7 @@ impl<'a> Compiler<'a> {
                     self.jmp_label(end_label);
 
                     self.set_jmp_label(then_label);
-                    self.compile_block(then, scope, loopend);
+                    self.compile_block(then, scope, lup);
                     self.set_jmp_label(end_label);
                 },
 
@@ -674,27 +678,34 @@ impl<'a> Compiler<'a> {
                     self.jmp_label(else_label);
 
                     self.set_jmp_label(then_label);
-                    self.compile_block(then, scope, loopend);
+                    self.compile_block(then, scope, lup);
                     self.jmp_label(end_label);
 
                     self.set_jmp_label(else_label);
-                    self.compile_block(elze, scope, loopend);
+                    self.compile_block(elze, scope, lup);
 
                     self.set_jmp_label(end_label);
                 },
 
                 StmtKind::For { body } => {
-                    let loop_label = self.new_jmp_label();
-                    let loop_end_label = self.new_jmp_label();
+                    let lup = Loop {
+                        start: self.new_jmp_label(),
+                        end:   self.new_jmp_label(),
+                    };
 
-                    self.set_jmp_label(loop_label);
-                    self.compile_block(body, scope, loop_end_label);
-                    self.jmp_label(loop_label);
-                    self.set_jmp_label(loop_end_label);
+                    self.set_jmp_label(lup.start);
+                    self.compile_block(body, scope, &lup);
+                    self.jmp_label(lup.start);
+
+                    self.set_jmp_label(lup.end);
                 },
 
                 StmtKind::Break => {
-                    self.jmp_label(loopend);
+                    self.jmp_label(lup.end);
+                },
+
+                StmtKind::Continue => {
+                    self.jmp_label(lup.start);
                 },
             }
         }
@@ -756,7 +767,7 @@ pub fn compile(file: File, ast: &Ast, semdata: Vec<LocalScope>) {
         cmd!(comp, "scoreboard players remove sp2 redvm.regs {}", fndecl.params.len()+fndecl.has_result as usize + 2);
         cmd!(comp, "scoreboard players add sp redvm.regs {}", semdata[i].len()-fndecl.params.len());
 
-        comp.compile_block(&fndecl.body, &semdata[i], 0);
+        comp.compile_block(&fndecl.body, &semdata[i], &Loop { start: 0, end: 0 });
 
         comp.set_jmp_label(ret_label);
         cmd!(comp, "scoreboard players remove sp redvm.regs {}", semdata[i].len()-fndecl.params.len());

@@ -64,6 +64,7 @@ pub enum Keyword {
     For,
     Int,
     Break,
+    Continue,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -91,13 +92,14 @@ pub enum Token {
 
 impl<'a> Lexer<'a> {
     const KEYWORDS: &'static [(&'static str, Keyword)] = &[
-        ("if",     Keyword::If),
-        ("fn",     Keyword::Fn),
-        ("return", Keyword::Return),
-        ("else",   Keyword::Else),
-        ("for",    Keyword::For),
-        ("int",    Keyword::Int),
-        ("break",  Keyword::Break),
+        ("if",       Keyword::If),
+        ("fn",       Keyword::Fn),
+        ("return",   Keyword::Return),
+        ("else",     Keyword::Else),
+        ("for",      Keyword::For),
+        ("int",      Keyword::Int),
+        ("break",    Keyword::Break),
+        ("continue", Keyword::Continue),
     ];
 
     pub fn new(src: &'a [u8]) -> Self {
@@ -373,13 +375,14 @@ impl fmt::Display for BinOpKind {
 impl fmt::Display for Keyword {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Keyword::If     => write!(f, "if"),
-            Keyword::Else   => write!(f, "else"),
-            Keyword::Fn     => write!(f, "fn"),
-            Keyword::Return => write!(f, "return"),
-            Keyword::For    => write!(f, "for"),
-            Keyword::Int    => write!(f, "int"),
-            Keyword::Break  => write!(f, "break"),
+            Keyword::If       => write!(f, "if"),
+            Keyword::Else     => write!(f, "else"),
+            Keyword::Fn       => write!(f, "fn"),
+            Keyword::Return   => write!(f, "return"),
+            Keyword::For      => write!(f, "for"),
+            Keyword::Int      => write!(f, "int"),
+            Keyword::Break    => write!(f, "break"),
+            Keyword::Continue => write!(f, "continue"),
         }
     }
 }

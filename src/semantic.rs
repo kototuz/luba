@@ -291,6 +291,12 @@ impl<'a> Analyzer<'a> {
                     }
                 },
 
+                StmtKind::Continue => {
+                    if !in_loop {
+                        semantic_err!(stmt.loc, "`continue` is not in a loop");
+                    }
+                },
+
                 StmtKind::Return => {
                     if self.curr_fn_decl.has_result {
                         semantic_err!(

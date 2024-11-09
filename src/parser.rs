@@ -39,6 +39,7 @@ pub enum StmtKind<'a> {
     If { cond: Expr, then: Block<'a> },
     IfElse { cond: Expr, then: Block<'a>, elze: Block<'a> },
     For { body: Block<'a> },
+    Continue,
     Break,
 }
 
@@ -153,10 +154,16 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
                 lex.expect_punct(Punct::Semicolon);
             },
 
+            Token::Keyword(Keyword::Continue) => {
+                lex.next_any();
+                lex.expect_punct(Punct::Semicolon);
+                block.push(Stmt { loc, kind: StmtKind::Continue });
+            }
+
             Token::Keyword(Keyword::Break) => {
                 lex.next_any();
                 lex.expect_punct(Punct::Semicolon);
-                block.push(Stmt { loc, kind: StmtKind::Break })
+                block.push(Stmt { loc, kind: StmtKind::Break });
             },
 
             Token::Keyword(Keyword::If) => {
