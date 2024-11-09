@@ -1,15 +1,17 @@
 fn main() {
-    a := 0;
-    for {
-        if a < 100 {
-            a = a + 1;
-        } else {
-            break;
-        }
+    n           := 10;
+    num1        := 0;
+    num2        := 1;
+    nextnumber := num2;
+    count       := 1;
 
-        b := 0;
-        for {
-            b = b + 1;
+    for {
+        if count <= n {
+            @log nextnumber;
+            num1 = num2;
+            num2 = nextnumber;
+            nextnumber = num1 + num2;
+        } else {
             break;
         }
     }

@@ -35,6 +35,7 @@ pub enum StmtKind<'a> {
     VarDecl(&'a str),
     ReturnVal(Expr),
     Return,
+    BuilinFnCall { name: &'a str, arg: &'a str },
     If { cond: Expr, then: Block<'a> },
     IfElse { cond: Expr, then: Block<'a>, elze: Block<'a> },
     For { body: Block<'a> },
@@ -139,6 +140,17 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
                         body: parse_block(lex),
                     }
                 });
+            },
+
+            Token::Punct(Punct::At) => {
+                lex.next_any();
+                block.push(Stmt {
+                    loc, kind: StmtKind::BuilinFnCall {
+                        name: lex.expect_ident(),
+                        arg:  lex.expect_ident()
+                    }
+                });
+                lex.expect_punct(Punct::Semicolon);
             },
 
             Token::Keyword(Keyword::Break) => {

@@ -76,6 +76,7 @@ pub enum Punct {
     CloseCurly,
     Colon,
     Eq,
+    At
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -167,6 +168,7 @@ impl<'a> Lexer<'a> {
             b'{' => Punct::OpenCurly,
             b'}' => Punct::CloseCurly,
             b':' => Punct::Colon,
+            b'@' => Punct::At,
             _ => return None
         };
         self.curr_token_len = 1;
@@ -344,6 +346,7 @@ impl fmt::Display for Punct {
             Punct::CloseParen => write!(f, ")"),
             Punct::OpenCurly  => write!(f, "{{"),
             Punct::CloseCurly => write!(f, "}}"),
+            Punct::At         => write!(f, "@"),
         }
     }
 }

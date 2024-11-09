@@ -645,6 +645,10 @@ impl<'a> Compiler<'a> {
                     cmd!(self, "scoreboard players remove sp redvm.regs {}", args.len()+1);
                 },
 
+                StmtKind::BuilinFnCall { arg, .. } => {
+                    inst!(self, "log {{_:{}}}", scope.get(arg).unwrap());
+                },
+
                 StmtKind::If { cond, then } => {
                     self.compile_expr(&cond.kind, scope);
 

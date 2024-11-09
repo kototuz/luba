@@ -272,6 +272,15 @@ impl<'a> Analyzer<'a> {
                     self.analyze_block(elze, in_loop);
                 },
 
+                StmtKind::BuilinFnCall { name, arg } => {
+                    if *name != "log" {
+                        semantic_err!(stmt.loc, "Builtin function `{name}` doesn't exist");
+                    }
+                    if !self.local_scope.contains_key(arg) {
+                        semantic_err!(stmt.loc, "Varible `{arg}` doesn't exist");
+                    }
+                },
+
                 StmtKind::For { body }  => {
                     self.analyze_block(body, true);
                 },
