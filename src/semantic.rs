@@ -194,11 +194,32 @@ impl<'a> Analyzer<'a> {
             this.curr_fn_decl = &fn_decl;
             this.analyze_block(&fn_decl.body, false);
 
+            if fn_decl.has_result {
+                this.check_return_value(&fn_decl.body);
+            }
+
             local_scopes.push(this.local_scope);
             this.local_scope = LocalScope::new(); 
         }
 
         local_scopes
+    }
+
+    fn check_return_value(&mut self, block: &Block<'a>) {
+        let stmt = block.last().unwrap();
+        match &stmt.kind {
+            StmtKind::ReturnVal(_) => {},
+            StmtKind::IfElse { then, elze, .. } => {
+                self.check_return_value(then);
+                self.check_return_value(elze);
+            },
+
+            StmtKind::For { .. } => { },
+
+            _ => {
+                semantic_err!(stmt.loc, "Return value is missed");
+            }
+        }
     }
 
     fn analyze_expr(&mut self, expr: &Expr) {
