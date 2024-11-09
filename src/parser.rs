@@ -3,7 +3,6 @@ use std::fmt;
 use crate::lexer::*;
 use super::{syntax_err, unexpected_token_err, exit_failure};
 
-pub type ExprIdx = usize;
 pub type Block<'a> = Vec<Stmt<'a>>;
 
 
@@ -36,7 +35,8 @@ pub enum StmtKind<'a> {
     VarDecl(&'a str),
     ReturnVal(Expr),
     Return,
-    If { cond: Expr, then: Block<'a>, elze: Block<'a> },
+    If { cond: Expr, then: Block<'a> },
+    IfElse { cond: Expr, then: Block<'a>, elze: Block<'a> },
     For { cond: Expr, body: Block<'a> },
 }
 
@@ -148,7 +148,7 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
                 if let Token::Keyword(Keyword::Else) = lex.expect_peek_any() {
                     lex.next_any();
                     block.push(Stmt {
-                        loc, kind: StmtKind::If {
+                        loc, kind: StmtKind::IfElse {
                             cond, then,
                             elze: parse_block(lex)
                         }
@@ -157,7 +157,6 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
                     block.push(Stmt {
                         loc, kind: StmtKind::If {
                             cond, then,
-                            elze: Vec::new()
                         }
                     });
                 }

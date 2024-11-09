@@ -646,7 +646,7 @@ impl<'a> Compiler<'a> {
                     cmd!(self, "scoreboard players remove sp redvm.regs {}", args.len()+1);
                 },
 
-                StmtKind::If { cond, then, .. } => {
+                StmtKind::If { cond, then } => {
                     self.compile_expr(&cond.kind, scope);
 
                     let then_label = self.new_jmp_label();
@@ -659,6 +659,26 @@ impl<'a> Compiler<'a> {
                     self.compile_block(then, scope);
                     self.set_jmp_label(end_label);
                 },
+
+                StmtKind::IfElse { cond, then, elze } => {
+                    self.compile_expr(&cond.kind, scope);
+
+                    let then_label = self.new_jmp_label();
+                    let else_label = self.new_jmp_label();
+                    let end_label = self.new_jmp_label();
+
+                    self.jmpif_label(then_label);
+                    self.jmp_label(else_label);
+
+                    self.set_jmp_label(then_label);
+                    self.compile_block(then, scope);
+                    self.jmp_label(end_label);
+
+                    self.set_jmp_label(else_label);
+                    self.compile_block(elze, scope);
+
+                    self.set_jmp_label(end_label);
+                }
 
                 StmtKind::For { .. } => todo!(),
             }

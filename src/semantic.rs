@@ -261,7 +261,12 @@ impl<'a> Analyzer<'a> {
                     }
                 },
 
-                StmtKind::If { cond, then, elze } => {
+                StmtKind::If { cond, then } => {
+                    self.analyze_expr(cond);
+                    self.analyze_block(then);
+                },
+
+                StmtKind::IfElse { cond, then, elze } => {
                     self.analyze_expr(cond);
                     self.analyze_block(then);
                     self.analyze_block(elze);
