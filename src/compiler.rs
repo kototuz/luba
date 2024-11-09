@@ -618,7 +618,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_block(&mut self, block: &Block<'a>, scope: &LocalScope) {
+    fn compile_block(&mut self, block: &Block<'a>, scope: &LocalScope, loopend: JmpLabel) {
         for stmt in block {
             match &stmt.kind {
                 StmtKind::VarDecl(_) => {},
@@ -639,8 +639,7 @@ impl<'a> Compiler<'a> {
                 },
 
                 StmtKind::FnCall { name, args } => {
-                    // TODO: could not call functions that return value
-                    //cmd!(self.file, "scoreboard players add sp redvm.regs 1");
+                    cmd!(self, "scoreboard players add sp redvm.regs 1");
                     for arg in args { self.compile_expr(&arg.kind, scope); }
                     self.call_label(name);
                     cmd!(self, "scoreboard players remove sp redvm.regs {}", args.len()+1);
@@ -656,7 +655,7 @@ impl<'a> Compiler<'a> {
                     self.jmp_label(end_label);
 
                     self.set_jmp_label(then_label);
-                    self.compile_block(then, scope);
+                    self.compile_block(then, scope, loopend);
                     self.set_jmp_label(end_label);
                 },
 
@@ -671,21 +670,27 @@ impl<'a> Compiler<'a> {
                     self.jmp_label(else_label);
 
                     self.set_jmp_label(then_label);
-                    self.compile_block(then, scope);
+                    self.compile_block(then, scope, loopend);
                     self.jmp_label(end_label);
 
                     self.set_jmp_label(else_label);
-                    self.compile_block(elze, scope);
+                    self.compile_block(elze, scope, loopend);
 
                     self.set_jmp_label(end_label);
-                }
+                },
 
                 StmtKind::For { body } => {
                     let loop_label = self.new_jmp_label();
+                    let loop_end_label = self.new_jmp_label();
 
                     self.set_jmp_label(loop_label);
-                    self.compile_block(body, scope);
+                    self.compile_block(body, scope, loop_end_label);
                     self.jmp_label(loop_label);
+                    self.set_jmp_label(loop_end_label);
+                },
+
+                StmtKind::Break => {
+                    self.jmp_label(loopend);
                 },
             }
         }
@@ -747,7 +752,7 @@ pub fn compile(file: File, ast: &Ast, semdata: Vec<LocalScope>) {
         cmd!(comp, "scoreboard players remove sp2 redvm.regs {}", fndecl.params.len()+fndecl.has_result as usize + 2);
         cmd!(comp, "scoreboard players add sp redvm.regs {}", semdata[i].len()-fndecl.params.len());
 
-        comp.compile_block(&fndecl.body, &semdata[i]);
+        comp.compile_block(&fndecl.body, &semdata[i], 0);
 
         comp.set_jmp_label(ret_label);
         cmd!(comp, "scoreboard players remove sp redvm.regs {}", semdata[i].len()-fndecl.params.len());

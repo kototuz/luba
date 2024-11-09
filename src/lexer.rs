@@ -63,6 +63,7 @@ pub enum Keyword {
     Return,
     For,
     Int,
+    Break,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -88,13 +89,14 @@ pub enum Token {
 }
 
 impl<'a> Lexer<'a> {
-    const KEYWORDS: &[(&'static str, Keyword)] = &[
+    const KEYWORDS: &'static [(&'static str, Keyword)] = &[
         ("if",     Keyword::If),
         ("fn",     Keyword::Fn),
         ("return", Keyword::Return),
         ("else",   Keyword::Else),
         ("for",    Keyword::For),
         ("int",    Keyword::Int),
+        ("break",  Keyword::Break),
     ];
 
     pub fn new(src: &'a [u8]) -> Self {
@@ -300,7 +302,7 @@ impl<'a> Lexer<'a> {
         unsafe {
             transmute::<&str, &'static str>(
                 std::str::from_utf8(&self.src[range])
-                    .unwrap_or_else(|err| {
+                    .unwrap_or_else(|_| {
                         lexical_err!(self.loc, "Invalid UTF-8");
                     })
             )
@@ -374,6 +376,7 @@ impl fmt::Display for Keyword {
             Keyword::Return => write!(f, "return"),
             Keyword::For    => write!(f, "for"),
             Keyword::Int    => write!(f, "int"),
+            Keyword::Break  => write!(f, "break"),
         }
     }
 }

@@ -192,7 +192,7 @@ impl<'a> Analyzer<'a> {
             }
 
             this.curr_fn_decl = &fn_decl;
-            this.analyze_block(&fn_decl.body);
+            this.analyze_block(&fn_decl.body, false);
 
             local_scopes.push(this.local_scope);
             this.local_scope = LocalScope::new(); 
@@ -227,7 +227,7 @@ impl<'a> Analyzer<'a> {
         }
     }
 
-    fn analyze_block(&mut self, block: &Block<'a>) {
+    fn analyze_block(&mut self, block: &Block<'a>, in_loop: bool) {
         for stmt in block {
             match &stmt.kind {
                 StmtKind::VarDecl(name) => {
@@ -263,17 +263,23 @@ impl<'a> Analyzer<'a> {
 
                 StmtKind::If { cond, then } => {
                     self.analyze_expr(cond);
-                    self.analyze_block(then);
+                    self.analyze_block(then, in_loop);
                 },
 
                 StmtKind::IfElse { cond, then, elze } => {
                     self.analyze_expr(cond);
-                    self.analyze_block(then);
-                    self.analyze_block(elze);
+                    self.analyze_block(then, in_loop);
+                    self.analyze_block(elze, in_loop);
                 },
 
                 StmtKind::For { body }  => {
-                    self.analyze_block(body);
+                    self.analyze_block(body, true);
+                },
+
+                StmtKind::Break => {
+                    if !in_loop {
+                        semantic_err!(stmt.loc, "`break` is not in a loop");
+                    }
                 },
 
                 StmtKind::Return => {
