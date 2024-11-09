@@ -272,8 +272,7 @@ impl<'a> Analyzer<'a> {
                     self.analyze_block(elze);
                 },
 
-                StmtKind::For { cond, body }  => {
-                    self.analyze_expr(cond);
+                StmtKind::For { body }  => {
                     self.analyze_block(body);
                 },
 

@@ -37,7 +37,7 @@ pub enum StmtKind<'a> {
     Return,
     If { cond: Expr, then: Block<'a> },
     IfElse { cond: Expr, then: Block<'a>, elze: Block<'a> },
-    For { cond: Expr, body: Block<'a> },
+    For { body: Block<'a> },
 }
 
 #[derive(Debug, PartialEq)]
@@ -135,7 +135,6 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
                 lex.next_any();
                 block.push(Stmt {
                     loc, kind: StmtKind::For {
-                        cond: parse_expr(lex, 0),
                         body: parse_block(lex),
                     }
                 });

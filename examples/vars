@@ -1,8 +1,10 @@
 fn main() {
-    a := 9;
-    if a >= 10 {
-        a = a + 1;
-    } else {
-        a = 0;
+    a := 0;
+    for {
+        if a < 100 {
+            a = a + 1;
+        } else {
+            return;
+        }
     }
 }

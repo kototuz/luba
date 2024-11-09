@@ -680,7 +680,13 @@ impl<'a> Compiler<'a> {
                     self.set_jmp_label(end_label);
                 }
 
-                StmtKind::For { .. } => todo!(),
+                StmtKind::For { body } => {
+                    let loop_label = self.new_jmp_label();
+
+                    self.set_jmp_label(loop_label);
+                    self.compile_block(body, scope);
+                    self.jmp_label(loop_label);
+                },
             }
         }
     }
