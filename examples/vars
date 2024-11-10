@@ -8,5 +8,16 @@ fn main() {
         i = 200;
     }
 
-    @log i;
+    @log "i";
+    @cmd "say We are starting!";
+
+    i = 0;
+    for {
+        if i < 100 {
+            @cmd "say hello, world!";
+            i = i + 1;
+            continue;
+        }
+        break;
+    }
 }

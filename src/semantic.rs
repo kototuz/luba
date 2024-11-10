@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::parser::*;
+use crate::{lexer::Token, parser::*};
 use super::{semantic_err, exit_failure};
 
 //type SymbolTable<'a> = Vec<&'a str>;
@@ -283,11 +283,17 @@ impl<'a> Analyzer<'a> {
                 },
 
                 StmtKind::BuilinFnCall { name, arg } => {
-                    if *name != "log" {
-                        semantic_err!(stmt.loc, "Builtin function `{name}` doesn't exist");
-                    }
-                    if !self.local_scope.contains_key(arg) {
-                        semantic_err!(stmt.loc, "Varible `{arg}` doesn't exist");
+                    match *name {
+                        "cmd" => {},
+                        "log" => {
+                            if !self.local_scope.contains_key(arg) {
+                                semantic_err!(stmt.loc, "Varible `{arg}` doesn't exist");
+                            }
+                        },
+
+                        _ => {
+                            semantic_err!(stmt.loc, "Builtin function `{name}` doesn't exist");
+                        }
                     }
                 },
 

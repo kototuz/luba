@@ -150,13 +150,22 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
 
             Token::Punct(Punct::At) => {
                 lex.next_any();
-                block.push(Stmt {
-                    loc, kind: StmtKind::BuilinFnCall {
-                        name: lex.expect_ident(),
-                        arg:  lex.expect_ident()
+
+                let name = lex.expect_ident();
+                match lex.expect_any() {
+                    Token::StrLit(lit) => {
+                        lex.expect_punct(Punct::Semicolon);
+                        block.push(Stmt {
+                            loc, kind: StmtKind::BuilinFnCall {
+                                name, arg: lit
+                            }
+                        });
+                    },
+
+                    t @ _ => {
+                        unexpected_token_err!(lex.loc, t);
                     }
-                });
-                lex.expect_punct(Punct::Semicolon);
+                }
             },
 
             Token::Keyword(Keyword::Continue) => {

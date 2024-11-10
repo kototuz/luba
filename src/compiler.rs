@@ -649,8 +649,18 @@ impl<'a> Compiler<'a> {
                     cmd!(self, "scoreboard players remove sp redvm.regs {}", args.len()+1);
                 },
 
-                StmtKind::BuilinFnCall { arg, .. } => {
-                    inst!(self, "log {{_:{}}}", scope.get(arg).unwrap());
+                StmtKind::BuilinFnCall { arg, name } => {
+                    match *name {
+                        "log" => {
+                            inst!(self, "log {{_:{}}}", scope.get(arg).unwrap());
+                        },
+
+                        "cmd" => {
+                            cmd!(self, "{arg}");
+                        },
+
+                        _ => unreachable!()
+                    }
                 },
 
                 StmtKind::If { cond, then, elzeifs, elze } => {

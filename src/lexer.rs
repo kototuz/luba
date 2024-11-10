@@ -123,6 +123,20 @@ impl<'a> Lexer<'a> {
         Some(text)
     }
 
+    fn strlit(&mut self) -> Option<&'static str> {
+        if self.src[self.pos] != b'"' { return None; }
+        let mut end: usize = self.pos+1;
+        while self.src[end] != b'"' {
+            end += 1;
+            if end == self.src.len() {
+                lexical_err!(self.loc, "Unclosed string literal");
+            }
+        }
+        let text = self.str_from_range(self.pos+1..end);
+        self.curr_token_len = text.len()+2;
+        Some(text)
+    }
+
     fn keyword(&mut self) -> Option<Keyword> {
         let mut end: usize = self.pos+1;
         while end < self.src.len() &&
@@ -272,6 +286,7 @@ impl<'a> Lexer<'a> {
 
         let result =
             self.bin_op().map(|op| Token::BinOp(op))
+            .or_else(|| self.strlit().map(|p| Token::StrLit(p)))
             .or_else(|| self.punct().map(|p| Token::Punct(p)))
             .or_else(|| self.keyword().map(|k| Token::Keyword(k)))
             .or_else(|| self.number().map(|n| Token::Number(n)))
@@ -290,10 +305,6 @@ impl<'a> Lexer<'a> {
         self.peek_any().unwrap_or_else(|| {
             syntax_err!(self.loc, "Token was expected, but reached the end");
         })
-    }
-
-    pub fn unexpected_token_err(&self, token: Token) -> ! {
-        syntax_err!(self.loc, "Unexpected token {token}");
     }
 
     pub fn expect_any(&mut self) -> Token {
@@ -568,7 +579,7 @@ mod tests {
         num2 =    345;\
         \n\n\nnum3=4;\n\
         num3 = num1 == num2;\n\
-        fn some()
+        fn some() \"HELLO, WORLD\"
     ".as_bytes();
 
     #[test]
@@ -577,11 +588,11 @@ mod tests {
         let mut lexer = Lexer::new(SOURCE);
         match lexer.expect_any() {
             Token::Ident(_) => {},
-            t @ _ => lexer.unexpected_token_err(t)
+            t @ _ => { unexpected_token_err!(lexer.loc, t); }
         }
         match lexer.expect_any() {
             Token::Punct(Punct::Semicolon) => {},
-            t @ _ => lexer.unexpected_token_err(t)
+            t @ _ => { unexpected_token_err!(lexer.loc, t); }
         }
     }
 
@@ -651,6 +662,8 @@ mod tests {
             Token::Keyword(Keyword::Fn),
             Token::Ident("some"),
             Token::Punct(Punct::OpenParen),
+            Token::Punct(Punct::CloseParen),
+            Token::StrLit("HELLO, WORLD"),
         ];
 
         for (i, x) in expected.iter().enumerate() {
