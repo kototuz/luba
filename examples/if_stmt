@@ -1,7 +1,0 @@
-fn main() {
-    let a = 0;
-    if a {
-        a = 12;
-        a = a * 3;
-    }
-}

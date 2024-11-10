@@ -1,5 +1,0 @@
-fn sum() { let sum = 2 + 3; }
-
-fn main() {
-    let res = sum(10, 6);
-}

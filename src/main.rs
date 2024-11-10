@@ -4,11 +4,8 @@ mod compiler;
 mod semantic;
 
 use std::io::prelude::*;
-use std::process::ExitCode;
 
 use parser::Ast;
-
-type Result<T> = std::result::Result<T, ()>;
 
 #[cfg(debug_assertions)]
 #[macro_export]
