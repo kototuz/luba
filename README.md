@@ -1,47 +1,53 @@
-# projects-mcs
-Programming language based on minecraft datapacks
+# red
+Programming language based on minecraft commands
 
-## Virtual Machine
-### Instructions:
-Constant:
-    - const {_:`<value>`}
+## Snippet
 
-Binary operations:
-    - add
-    - sub
-    - mul
-    - div
-    - mod
+``` text
+fn main() {
+    a := 2;
+    b := a*a;
+    c := a + b;
 
-Comparision:
-    - eq
-    - ne
-    - gt
-    - ge
-    - lt
-    - le
+    d;
+    d = c/2;
 
-Logical operations:
-    - and
-    - or
-
-Variable operations:
-    - getlocal {_:`<idx>`}
-    - setlocal {_:`<idx>`}
-
-Register operations:
-    - setsp
-    - setsp2
-    - setip
-
-## Current state
-``` rust
-fn main() { // you can create functions
-    v0 = 1 * (2 + 3); // create variables
-    v1 = (7 + 9) - 3 * 5;
-}
-
-fn other() {
-    v0 = 123 + 1;
+    if d == 12 {
+        @cmd "say hello, world!";
+    } else {
+        @cmd "say bye, world!";
+    }
 }
 ```
+
+## Virtual Machine
+
+The language compiles into the `mcfunction` file.
+The **redvm** virtual machine executes this file.
+Those the vm loads your program.
+After that the vm runs.
+
+You can implement your own vm instead of using the default.
+Note that instructions are basicly minecraft functions and
+must have prefix `redvm:insts/`.
+
+List of instructions (functions):
+- const     `{_:<number>}`
+- get_local `{_:<index>}`
+- set_local `{_:<index>}`
+- set_reg   `{_:<reg>}`
+- get_reg   `{_:<reg>}`
+- jmp_if    `{_:<ip>}`
+- call      `{_:<ip>}`
+- add
+- sub
+- mul
+- div
+- eq
+- ne
+- gt
+- ge
+- lt
+- le
+- and
+- or
