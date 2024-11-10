@@ -207,18 +207,8 @@ impl<'a> Analyzer<'a> {
 
     fn check_return_value(&mut self, block: &Block<'a>) {
         let stmt = block.last().unwrap();
-        match &stmt.kind {
-            StmtKind::ReturnVal(_) => {},
-            StmtKind::IfElse { then, elze, .. } => {
-                self.check_return_value(then);
-                self.check_return_value(elze);
-            },
-
-            StmtKind::For { .. } => { },
-
-            _ => {
-                semantic_err!(stmt.loc, "Return value is missed");
-            }
+        if !matches!(stmt.kind, StmtKind::ReturnVal(_)) {
+            semantic_err!(stmt.loc, "Return value is missed");
         }
     }
 
@@ -282,14 +272,13 @@ impl<'a> Analyzer<'a> {
                     }
                 },
 
-                StmtKind::If { cond, then } => {
+                StmtKind::If { cond, then, elzeifs, elze } => {
                     self.analyze_expr(cond);
                     self.analyze_block(then, in_loop);
-                },
-
-                StmtKind::IfElse { cond, then, elze } => {
-                    self.analyze_expr(cond);
-                    self.analyze_block(then, in_loop);
+                    for elzeif in elzeifs {
+                        self.analyze_expr(&elzeif.cond);
+                        self.analyze_block(&elzeif.then, in_loop);
+                    }
                     self.analyze_block(elze, in_loop);
                 },
 

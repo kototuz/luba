@@ -36,11 +36,16 @@ pub enum StmtKind<'a> {
     ReturnVal(Expr),
     Return,
     BuilinFnCall { name: &'a str, arg: &'a str },
-    If { cond: Expr, then: Block<'a> },
-    IfElse { cond: Expr, then: Block<'a>, elze: Block<'a> },
+    If { cond: Expr, then: Block<'a>, elzeifs: Vec<ElseIf<'a>>, elze: Block<'a>},
     For { body: Block<'a> },
     Continue,
     Break,
+}
+
+#[derive(Debug)]
+pub struct ElseIf<'a> {
+    pub cond: Expr,
+    pub then: Block<'a>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -168,23 +173,31 @@ fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
 
             Token::Keyword(Keyword::If) => {
                 lex.next_any();
+
                 let cond = parse_expr(lex, 0);
                 let then = parse_block(lex);
-                if let Token::Keyword(Keyword::Else) = lex.expect_peek_any() {
+                let mut elzeifs: Vec<ElseIf> = Vec::new();
+                let mut elze: Block = Block::new();
+
+                while lex.expect_peek_any() == Token::Keyword(Keyword::Else) {
                     lex.next_any();
-                    block.push(Stmt {
-                        loc, kind: StmtKind::IfElse {
-                            cond, then,
-                            elze: parse_block(lex)
-                        }
-                    })
-                } else {
-                    block.push(Stmt {
-                        loc, kind: StmtKind::If {
-                            cond, then,
-                        }
-                    });
+                    if lex.expect_peek_any() == Token::Keyword(Keyword::If) {
+                        lex.next_any();
+                        elzeifs.push(ElseIf {
+                            cond: parse_expr(lex, 0),
+                            then: parse_block(lex),
+                        });
+                    } else {
+                        elze = parse_block(lex);
+                        break;
+                    }
                 }
+
+                block.push(Stmt {
+                    loc, kind: StmtKind::If {
+                        cond, then, elzeifs, elze
+                    }
+                });
             },
 
             Token::Keyword(Keyword::Return) => {

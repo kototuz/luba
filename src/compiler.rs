@@ -653,33 +653,31 @@ impl<'a> Compiler<'a> {
                     inst!(self, "log {{_:{}}}", scope.get(arg).unwrap());
                 },
 
-                StmtKind::If { cond, then } => {
+                StmtKind::If { cond, then, elzeifs, elze } => {
+                    let mut then_label = self.new_jmp_label();
+                    let mut else_label = self.new_jmp_label();
+                    let end_label      = self.new_jmp_label();
+
                     self.compile_expr(&cond.kind, scope);
-
-                    let then_label = self.new_jmp_label();
-                    let end_label = self.new_jmp_label();
-
-                    self.jmpif_label(then_label);
-                    self.jmp_label(end_label);
-
-                    self.set_jmp_label(then_label);
-                    self.compile_block(then, scope, lup);
-                    self.set_jmp_label(end_label);
-                },
-
-                StmtKind::IfElse { cond, then, elze } => {
-                    self.compile_expr(&cond.kind, scope);
-
-                    let then_label = self.new_jmp_label();
-                    let else_label = self.new_jmp_label();
-                    let end_label = self.new_jmp_label();
-
                     self.jmpif_label(then_label);
                     self.jmp_label(else_label);
-
                     self.set_jmp_label(then_label);
                     self.compile_block(then, scope, lup);
                     self.jmp_label(end_label);
+
+                    for elzeif in elzeifs {
+                        self.set_jmp_label(else_label);
+
+                        then_label = self.new_jmp_label();
+                        else_label = self.new_jmp_label();
+
+                        self.compile_expr(&elzeif.cond.kind, scope);
+                        self.jmpif_label(then_label);
+                        self.jmp_label(else_label);
+                        self.set_jmp_label(then_label);
+                        self.compile_block(&elzeif.then, scope, lup);
+                        self.jmp_label(end_label);
+                    }
 
                     self.set_jmp_label(else_label);
                     self.compile_block(elze, scope, lup);

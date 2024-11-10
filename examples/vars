@@ -1,10 +1,12 @@
 fn main() {
-    i := 0;
-    for {
-        if i < 10 {
-            i = i + 1;
-            continue;
-        }
-        break;
+    i := 2;
+    if i < 0 {
+        i = 69;
+    } else if i == 2 {
+        i = 111;
+    } else {
+        i = 200;
     }
+
+    @log i;
 }
