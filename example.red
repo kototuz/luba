@@ -1,23 +1,28 @@
-fn main() {
-    i := 2;
-    if i < 0 {
-        i = 69;
-    } else if i == 2 {
-        i = 111;
-    } else {
-        i = 200;
-    }
-
-    @log "i";
-    @cmd "say We are starting!";
-
-    i = 0;
+fn pow(n, p) int {
+    result := n;
     for {
-        if i < 100 {
-            @cmd "say hello, world!";
-            i = i + 1;
+        if p > 1 {
+            result = result*n;
+            p = p-1;
             continue;
         }
         break;
     }
+    return result;
+}
+
+fn bn(b1, q, n) int {
+    return b1*pow(q, n-1);
+}
+
+fn sn(b1, q, n) int {
+    return b1*(1 - pow(q, n))/(1-q);
+}
+
+fn main() {
+    res := bn(2, 2, 5);
+    sum := sn(2, 2, 5);
+
+    @log "res";
+    @log "sum";
 }

@@ -13,11 +13,10 @@ pub struct Analyzer<'a> {
     global_scope: GlobalScope<'a>,
     local_scope:  LocalScope<'a>,
     curr_fn_decl: &'a FnDecl<'a>,
+    sp2:          usize
 }
 
 impl<'a> Analyzer<'a> {
-    const LOCAL_STACK_OFFSET: usize = 2;
-
     pub fn analyze(ast: &'a Ast<'a>) -> Vec<LocalScope<'a>> {
         let mut local_scopes: Vec<LocalScope> =
             Vec::with_capacity(ast.fn_decls.len());
@@ -30,6 +29,7 @@ impl<'a> Analyzer<'a> {
             global_scope: GlobalScope::with_capacity(ast.fn_decls.len()),
             local_scope:  LocalScope::new(),
             curr_fn_decl: &ast.fn_decls[0],
+            sp2:          2,
         };
 
         for fn_decl in &ast.fn_decls {
@@ -42,19 +42,27 @@ impl<'a> Analyzer<'a> {
 
             this.global_scope.insert(fn_decl.name, &fn_decl);
 
-            for i in 0..fn_decl.params.len() {
-                this.local_scope.insert(fn_decl.params[i], i+1);
+            if fn_decl.has_result {
+                this.sp2 += 1;
+                for i in 0..fn_decl.params.len() {
+                    this.local_scope.insert(fn_decl.params[i], i+1);
+                }
+                this.check_return_value(&fn_decl.body);
+            } else {
+                for i in 0..fn_decl.params.len() {
+                    this.local_scope.insert(fn_decl.params[i], i);
+                }
             }
+
+            this.sp2 += fn_decl.params.len();
 
             this.curr_fn_decl = &fn_decl;
             this.analyze_block(&fn_decl.body, false);
 
-            if fn_decl.has_result {
-                this.check_return_value(&fn_decl.body);
-            }
 
             local_scopes.push(this.local_scope);
             this.local_scope = LocalScope::new(); 
+            this.sp2 = 2;
         }
 
         local_scopes
@@ -81,6 +89,9 @@ impl<'a> Analyzer<'a> {
                     if !fn_decl.has_result {
                         semantic_err!(expr.loc, "Function `{}` doesn't return value", data.name);
                     }
+                    if data.args.len() != fn_decl.params.len() {
+                        semantic_err!(expr.loc, "Function `{}`'s arguments are incorrect", data.name);
+                    }
                 } else {
                     semantic_err!(expr.loc, "Function `{}` doesn't exist", data.name);
                 }
@@ -100,9 +111,8 @@ impl<'a> Analyzer<'a> {
                     if self.local_scope.contains_key(name) {
                         semantic_err!(stmt.loc, "Redeclaration of variable `{name}`");
                     }
-                    self.local_scope.insert(
-                        name, Self::LOCAL_STACK_OFFSET+self.local_scope.len()
-                    );
+                    self.local_scope.insert(name, self.sp2);
+                    self.sp2 += 1;
                 },
 
                 StmtKind::VarAssign { name, expr } => {
@@ -177,13 +187,14 @@ impl<'a> Analyzer<'a> {
                     }
                 },
 
-                StmtKind::ReturnVal(_) => {
+                StmtKind::ReturnVal(expr) => {
                     if !self.curr_fn_decl.has_result {
                         semantic_err!(
                             stmt.loc, "Function `{}` mustn't return value",
                             self.curr_fn_decl.name
                         );
                     }
+                    self.analyze_expr(expr);
                 },
             }
         }
