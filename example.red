@@ -1,13 +1,8 @@
 fn pow(n, p) int {
-    result := n;
-    for {
-        if p > 1 {
-            result = result*n;
-            p = p-1;
-            continue;
-        }
-        break;
+    for result := n; p > 1; p = p-1; {
+        result = result*n;
     }
+
     return result;
 }
 
@@ -20,9 +15,11 @@ fn sn(b1, q, n) int {
 }
 
 fn main() {
-    res := bn(2, 2, 5);
-    sum := sn(2, 2, 5);
-
+    res := bn(1, 2, 3);
     @log "res";
-    @log "sum";
+
+    for i := 0; i < 10; i = i+1; {
+        @cmd "say hello";
+    }
+    @cmd "say end!";
 }

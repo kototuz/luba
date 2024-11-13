@@ -32,12 +32,13 @@ pub struct FnDecl<'a> {
 pub enum StmtKind<'a> {
     FnCall { name: &'a str, args: Vec<Expr> },
     VarAssign { name: &'a str, expr: Expr },
+    VarDeclAssign { name: &'a str, expr: Expr },
     VarDecl(&'a str),
     ReturnVal(Expr),
     Return,
     BuilinFnCall { name: &'a str, arg: &'a str },
     If { cond: Expr, then: Block<'a>, elzeifs: Vec<ElseIf<'a>>, elze: Block<'a>},
-    For { body: Block<'a> },
+    For { body: Block<'a>, init: Option<Box<Stmt<'a>>>, cond: Option<Expr>, post: Option<Box<Stmt<'a>>> },
     Continue,
     Break,
 }
@@ -132,181 +133,201 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Ast<'a> {
     ast
 }
 
+fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
+    let loc = lex.loc.clone();
+    match lex.expect_peek_any() {
+        Token::Keyword(Keyword::For) => {
+            lex.next_any();
+
+            let mut init: Option<Box<Stmt>> = None;
+            let mut cond: Option<Expr>      = None;
+            let mut post: Option<Box<Stmt>> = None;
+
+            match lex.expect_peek_any() {
+                Token::Punct(Punct::Semicolon) => { lex.next_any(); },
+                _ => { init = Some(Box::new(parse_stmt(lex))); }
+            }
+
+            match lex.expect_peek_any() {
+                Token::Punct(Punct::Semicolon) => { lex.next_any(); },
+                _ => {
+                    cond = Some(parse_expr(lex, 0));
+                    lex.expect_punct(Punct::Semicolon);
+                }
+            }
+
+            match lex.expect_peek_any() {
+                Token::Punct(Punct::OpenCurly) => {},
+                _ => { post = Some(Box::new(parse_stmt(lex))); }
+            }
+
+            Stmt {
+                loc, kind: StmtKind::For {
+                    init, cond, post,
+                    body: parse_block(lex)
+                }
+            }
+        },
+
+        Token::Punct(Punct::At) => {
+            lex.next_any();
+
+            let name = lex.expect_ident();
+            match lex.expect_any() {
+                Token::StrLit(lit) => {
+                    lex.expect_punct(Punct::Semicolon);
+                    Stmt {
+                        loc, kind: StmtKind::BuilinFnCall {
+                            name, arg: lit
+                        }
+                    }
+                },
+
+                t @ _ => {
+                    unexpected_token_err!(lex.loc, t);
+                }
+            }
+        },
+
+        Token::Keyword(Keyword::Continue) => {
+            lex.next_any();
+            lex.expect_punct(Punct::Semicolon);
+            Stmt { loc, kind: StmtKind::Continue }
+        }
+
+        Token::Keyword(Keyword::Break) => {
+            lex.next_any();
+            lex.expect_punct(Punct::Semicolon);
+            Stmt { loc, kind: StmtKind::Break }
+        },
+
+        Token::Keyword(Keyword::If) => {
+            lex.next_any();
+
+            let cond = parse_expr(lex, 0);
+            let then = parse_block(lex);
+            let mut elzeifs: Vec<ElseIf> = Vec::new();
+            let mut elze: Block = Block::new();
+
+            while lex.expect_peek_any() == Token::Keyword(Keyword::Else) {
+                lex.next_any();
+                if lex.expect_peek_any() == Token::Keyword(Keyword::If) {
+                    lex.next_any();
+                    elzeifs.push(ElseIf {
+                        cond: parse_expr(lex, 0),
+                        then: parse_block(lex),
+                    });
+                } else {
+                    elze = parse_block(lex);
+                    break;
+                }
+            }
+
+            Stmt {
+                loc, kind: StmtKind::If {
+                    cond, then, elzeifs, elze
+                }
+            }
+        },
+
+        Token::Keyword(Keyword::Return) => {
+            lex.next_any();
+            if let Token::Punct(Punct::Semicolon) = lex.expect_peek_any() {
+                lex.next_any();
+                Stmt {
+                    loc: lex.loc.clone(),
+                    kind: StmtKind::Return
+                }
+            } else {
+                let expr = parse_expr(lex, 0);
+                lex.expect_punct(Punct::Semicolon);
+                Stmt {
+                    loc: lex.loc.clone(),
+                    kind: StmtKind::ReturnVal(expr)
+                }
+            }
+        },
+
+        Token::Ident(var_name) => {
+            lex.next_any();
+            match lex.expect_any() {
+                Token::Punct(Punct::Semicolon) => {
+                    Stmt {
+                        loc,
+                        kind: StmtKind::VarDecl(var_name)
+                    }
+                },
+
+                Token::Punct(Punct::Colon) => {
+                    lex.expect_punct(Punct::Eq);
+                    let expr = parse_expr(lex, 0);
+                    lex.expect_punct(Punct::Semicolon);
+                    Stmt {
+                        loc,
+                        kind: StmtKind::VarDeclAssign {
+                            name: var_name, expr,
+                        }
+                    }
+                },
+
+                Token::Punct(Punct::Eq) => {
+                    let expr = parse_expr(lex, 0);
+                    lex.expect_punct(Punct::Semicolon);
+                    Stmt {
+                        loc,
+                        kind: StmtKind::VarAssign {
+                            name: var_name,
+                            expr 
+                        }
+                    }
+                },
+
+                Token::Punct(Punct::OpenParen) => {
+                    let mut args: Vec<Expr> = Vec::new();
+
+                    if lex.expect_peek_any() == Token::Punct(Punct::CloseParen) {
+                        lex.next_any();
+                        lex.expect_punct(Punct::Semicolon);
+                        return Stmt {
+                            loc, kind: StmtKind::FnCall {
+                                args, name: var_name
+                            }
+                        };
+                    }
+
+                    loop {
+                        args.push(parse_expr(lex, 0));
+                        match lex.expect_any() {
+                            Token::Punct(Punct::Comma) => {},
+                            Token::Punct(Punct::CloseParen) => break,
+                            t @ _ => { unexpected_token_err!(lex.loc, t); }
+                        }
+                    }
+
+                    lex.expect_punct(Punct::Semicolon);
+                    Stmt {
+                        loc, kind: StmtKind::FnCall {
+                            args, name: var_name
+                        }
+                    }
+                },
+
+                t @ _ => { unexpected_token_err!(lex.loc, t); }
+            }
+        },
+
+        t @ _ => { unexpected_token_err!(lex.loc, t); }
+    }
+}
+
 fn parse_block<'a>( lex: &mut Lexer<'a>) -> Block<'a> {
     let mut block = Block::new();
 
     lex.expect_punct(Punct::OpenCurly);
-    loop {
-        let loc = lex.loc.clone();
-        match lex.expect_peek_any() {
-            Token::Keyword(Keyword::For) => {
-                lex.next_any();
-                block.push(Stmt {
-                    loc, kind: StmtKind::For {
-                        body: parse_block(lex),
-                    }
-                });
-            },
-
-            Token::Punct(Punct::At) => {
-                lex.next_any();
-
-                let name = lex.expect_ident();
-                match lex.expect_any() {
-                    Token::StrLit(lit) => {
-                        lex.expect_punct(Punct::Semicolon);
-                        block.push(Stmt {
-                            loc, kind: StmtKind::BuilinFnCall {
-                                name, arg: lit
-                            }
-                        });
-                    },
-
-                    t @ _ => {
-                        unexpected_token_err!(lex.loc, t);
-                    }
-                }
-            },
-
-            Token::Keyword(Keyword::Continue) => {
-                lex.next_any();
-                lex.expect_punct(Punct::Semicolon);
-                block.push(Stmt { loc, kind: StmtKind::Continue });
-            }
-
-            Token::Keyword(Keyword::Break) => {
-                lex.next_any();
-                lex.expect_punct(Punct::Semicolon);
-                block.push(Stmt { loc, kind: StmtKind::Break });
-            },
-
-            Token::Keyword(Keyword::If) => {
-                lex.next_any();
-
-                let cond = parse_expr(lex, 0);
-                let then = parse_block(lex);
-                let mut elzeifs: Vec<ElseIf> = Vec::new();
-                let mut elze: Block = Block::new();
-
-                while lex.expect_peek_any() == Token::Keyword(Keyword::Else) {
-                    lex.next_any();
-                    if lex.expect_peek_any() == Token::Keyword(Keyword::If) {
-                        lex.next_any();
-                        elzeifs.push(ElseIf {
-                            cond: parse_expr(lex, 0),
-                            then: parse_block(lex),
-                        });
-                    } else {
-                        elze = parse_block(lex);
-                        break;
-                    }
-                }
-
-                block.push(Stmt {
-                    loc, kind: StmtKind::If {
-                        cond, then, elzeifs, elze
-                    }
-                });
-            },
-
-            Token::Keyword(Keyword::Return) => {
-                lex.next_any();
-                if let Token::Punct(Punct::Semicolon) = lex.expect_peek_any() {
-                    lex.next_any();
-                    block.push(Stmt {
-                        loc: lex.loc.clone(),
-                        kind: StmtKind::Return
-                    })
-                } else {
-                    block.push(Stmt {
-                        loc: lex.loc.clone(),
-                        kind: StmtKind::ReturnVal(parse_expr(lex, 0))
-                    });
-                    lex.expect_punct(Punct::Semicolon);
-                }
-            },
-
-            Token::Ident(var_name) => {
-                lex.next_any();
-                match lex.expect_any() {
-                    Token::Punct(Punct::Semicolon) => {
-                        block.push(Stmt {
-                            loc,
-                            kind: StmtKind::VarDecl(var_name)
-                        });
-                    },
-
-                    Token::Punct(Punct::Colon) => {
-                        block.push(Stmt {
-                            loc: loc.clone(),
-                            kind: StmtKind::VarDecl(var_name)
-                        });
-
-                        lex.expect_punct(Punct::Eq);
-                        block.push(Stmt {
-                            loc,
-                            kind: StmtKind::VarAssign {
-                                name: var_name,
-                                expr: parse_expr(lex, 0),
-                            }
-                        });
-                        lex.expect_punct(Punct::Semicolon);
-                    },
-
-                    Token::Punct(Punct::Eq) => {
-                        block.push(Stmt {
-                            loc,
-                            kind: StmtKind::VarAssign {
-                                name: var_name,
-                                expr: parse_expr(lex, 0),
-                            }
-                        });
-                        lex.expect_punct(Punct::Semicolon);
-                    },
-
-                    Token::Punct(Punct::OpenParen) => {
-                        let mut args: Vec<Expr> = Vec::new();
-
-                        if lex.expect_peek_any() == Token::Punct(Punct::CloseParen) {
-                            lex.next_any();
-                            lex.expect_punct(Punct::Semicolon);
-                            block.push(Stmt {
-                                loc, kind: StmtKind::FnCall {
-                                    args, name: var_name
-                                }
-                            });
-                            continue;
-                        }
-
-                        loop {
-                            args.push(parse_expr(lex, 0));
-                            match lex.expect_any() {
-                                Token::Punct(Punct::Comma) => {},
-                                Token::Punct(Punct::CloseParen) => break,
-                                t @ _ => { unexpected_token_err!(lex.loc, t); }
-                            }
-                        }
-
-                        lex.expect_punct(Punct::Semicolon);
-                        block.push(Stmt {
-                            loc, kind: StmtKind::FnCall {
-                                args, name: var_name
-                            }
-                        });
-                    },
-
-                    t @ _ => { unexpected_token_err!(lex.loc, t); }
-                }
-            },
-
-            Token::Punct(Punct::CloseCurly) => {
-                lex.next_any();
-                break;
-            },
-
-            t @ _ => { unexpected_token_err!(lex.loc, t); }
-        }
+    while lex.expect_peek_any() != Token::Punct(Punct::CloseCurly) {
+        block.push(parse_stmt(lex));
     }
+    lex.expect_punct(Punct::CloseCurly);
 
     block
 }

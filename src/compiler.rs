@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs::File, io::{Seek, SeekFrom, Write}};
 
-use crate::{compilation_err, exit_failure, lexer::BinOpKind, parser::{Ast, Block, ExprKind, StmtKind}, semantic::LocalScope};
+use crate::{compilation_err, exit_failure, lexer::BinOpKind, parser::{Ast, Block, ExprKind, Stmt, StmtKind}, semantic::LocalScope};
 
 type IP = usize;
 type FilePos = u64;
@@ -145,101 +145,124 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_block(&mut self, block: &Block<'a>, scope: &LocalScope, lup: &Loop) {
-        for stmt in block {
-            match &stmt.kind {
-                StmtKind::VarDecl(_) => {},
-                StmtKind::VarAssign { name, expr } => {
-                    self.compile_expr(&expr.kind, scope);
-                    let local_idx = scope.get(name).unwrap();
-                    inst!(self, "set_local {{_:{local_idx}}}");
-                },
+    fn compile_stmt(&mut self, stmt: &Stmt<'a>, scope: &LocalScope, lup: &Loop) {
+        match &stmt.kind {
+            StmtKind::VarDecl(_) => {},
+            StmtKind::VarAssign { name, expr } => {
+                self.compile_expr(&expr.kind, scope);
+                let local_idx = scope.get(name).unwrap();
+                inst!(self, "set_local {{_:{local_idx}}}");
+            },
 
-                StmtKind::ReturnVal(expr) => {
-                    self.compile_expr(&expr.kind, scope);
-                    inst!(self, "set_local {{_:0}}");
-                    self.jmp_label(Self::RET_JMP_LABEL);
-                },
+            StmtKind::VarDeclAssign { name, expr } => {
+                self.compile_expr(&expr.kind, scope);
+                let local_idx = scope.get(name).unwrap();
+                inst!(self, "set_local {{_:{local_idx}}}");
+            },
 
-                StmtKind::Return => {
-                    self.jmp_label(Self::RET_JMP_LABEL);
-                },
+            StmtKind::ReturnVal(expr) => {
+                self.compile_expr(&expr.kind, scope);
+                inst!(self, "set_local {{_:0}}");
+                self.jmp_label(Self::RET_JMP_LABEL);
+            },
 
-                StmtKind::FnCall { name, args } => {
-                    cmd!(self, "scoreboard players add sp redvm.regs 1");
-                    for arg in args { self.compile_expr(&arg.kind, scope); }
-                    self.call_label(name);
-                    cmd!(self, "scoreboard players remove sp redvm.regs {}", args.len()+1);
-                },
+            StmtKind::Return => {
+                self.jmp_label(Self::RET_JMP_LABEL);
+            },
 
-                StmtKind::BuilinFnCall { arg, name } => {
-                    match *name {
-                        "log" => {
-                            inst!(self, "log {{_:{}}}", scope.get(arg).unwrap());
-                        },
+            StmtKind::FnCall { name, args } => {
+                cmd!(self, "scoreboard players add sp redvm.regs 1");
+                for arg in args { self.compile_expr(&arg.kind, scope); }
+                self.call_label(name);
+                cmd!(self, "scoreboard players remove sp redvm.regs {}", args.len()+1);
+            },
 
-                        "cmd" => {
-                            cmd!(self, "{arg}");
-                        },
+            StmtKind::BuilinFnCall { arg, name } => {
+                match *name {
+                    "log" => {
+                        inst!(self, "log {{_:{}}}", scope.get(arg).unwrap());
+                    },
 
-                        _ => unreachable!()
-                    }
-                },
+                    "cmd" => {
+                        cmd!(self, "{arg}");
+                    },
 
-                StmtKind::If { cond, then, elzeifs, elze } => {
-                    let mut then_label = self.new_jmp_label();
-                    let mut else_label = self.new_jmp_label();
-                    let end_label      = self.new_jmp_label();
+                    _ => unreachable!()
+                }
+            },
 
-                    self.compile_expr(&cond.kind, scope);
+            StmtKind::If { cond, then, elzeifs, elze } => {
+                let mut then_label = self.new_jmp_label();
+                let mut else_label = self.new_jmp_label();
+                let end_label      = self.new_jmp_label();
+
+                self.compile_expr(&cond.kind, scope);
+                self.jmpif_label(then_label);
+                self.jmp_label(else_label);
+                self.set_jmp_label(then_label);
+                self.compile_block(then, scope, lup);
+                self.jmp_label(end_label);
+
+                for elzeif in elzeifs {
+                    self.set_jmp_label(else_label);
+
+                    then_label = self.new_jmp_label();
+                    else_label = self.new_jmp_label();
+
+                    self.compile_expr(&elzeif.cond.kind, scope);
                     self.jmpif_label(then_label);
                     self.jmp_label(else_label);
                     self.set_jmp_label(then_label);
-                    self.compile_block(then, scope, lup);
+                    self.compile_block(&elzeif.then, scope, lup);
                     self.jmp_label(end_label);
+                }
 
-                    for elzeif in elzeifs {
-                        self.set_jmp_label(else_label);
+                self.set_jmp_label(else_label);
+                self.compile_block(elze, scope, lup);
 
-                        then_label = self.new_jmp_label();
-                        else_label = self.new_jmp_label();
+                self.set_jmp_label(end_label);
+            },
 
-                        self.compile_expr(&elzeif.cond.kind, scope);
-                        self.jmpif_label(then_label);
-                        self.jmp_label(else_label);
-                        self.set_jmp_label(then_label);
-                        self.compile_block(&elzeif.then, scope, lup);
-                        self.jmp_label(end_label);
-                    }
+            StmtKind::For { body, init, cond, post } => {
+                let forlup = Loop {
+                    start: self.new_jmp_label(),
+                    end:   self.new_jmp_label(),
+                };
 
-                    self.set_jmp_label(else_label);
-                    self.compile_block(elze, scope, lup);
+                if let Some(s) = init {
+                    self.compile_stmt(s, scope, &lup);
+                }
 
-                    self.set_jmp_label(end_label);
-                },
+                self.set_jmp_label(forlup.start);
+                if let Some(e) = cond {
+                    let forloop_body = self.new_jmp_label();
+                    self.compile_expr(&e.kind, scope);
+                    self.jmpif_label(forloop_body);
+                    self.jmp_label(forlup.end);
+                    self.set_jmp_label(forloop_body);
+                }
 
-                StmtKind::For { body } => {
-                    let lup = Loop {
-                        start: self.new_jmp_label(),
-                        end:   self.new_jmp_label(),
-                    };
+                self.compile_block(body, scope, &forlup);
+                if let Some(s) = post {
+                    self.compile_stmt(s, scope, &forlup);
+                }
 
-                    self.set_jmp_label(lup.start);
-                    self.compile_block(body, scope, &lup);
-                    self.jmp_label(lup.start);
+                self.jmp_label(forlup.start);
+                self.set_jmp_label(forlup.end);
+            },
 
-                    self.set_jmp_label(lup.end);
-                },
+            StmtKind::Break => {
+                self.jmp_label(lup.end);
+            },
 
-                StmtKind::Break => {
-                    self.jmp_label(lup.end);
-                },
-
-                StmtKind::Continue => {
-                    self.jmp_label(lup.start);
-                },
-            }
+            StmtKind::Continue => {
+                self.jmp_label(lup.start);
+            },
         }
+    }
+
+    fn compile_block(&mut self, block: &Block<'a>, scope: &LocalScope, lup: &Loop) {
+        for stmt in block { self.compile_stmt(stmt, scope, lup); }
     }
 
     fn curr_pos(&mut self) -> FilePos {

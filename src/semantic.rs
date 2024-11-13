@@ -104,99 +104,115 @@ impl<'a> Analyzer<'a> {
         }
     }
 
+    fn analyze_stmt(&mut self, stmt: &Stmt<'a>, in_loop: bool) {
+        match &stmt.kind {
+            StmtKind::VarDecl(name) => {
+                if self.local_scope.contains_key(name) {
+                    semantic_err!(stmt.loc, "Redeclaration of variable `{name}`");
+                }
+                self.local_scope.insert(name, self.sp2);
+                self.sp2 += 1;
+            },
+
+            StmtKind::VarDeclAssign { name, expr } => {
+                if self.local_scope.contains_key(name) {
+                    semantic_err!(stmt.loc, "Redeclaration of variable `{name}`");
+                }
+                self.analyze_expr(expr);
+                self.local_scope.insert(name, self.sp2);
+                self.sp2 += 1;
+            },
+
+            StmtKind::VarAssign { name, expr } => {
+                if !self.local_scope.contains_key(name) {
+                    semantic_err!(stmt.loc, "Variable `{name}` doesn't exist");
+                }
+                self.analyze_expr(expr);
+            },
+
+            StmtKind::FnCall { name, args } => {
+                if let Some(fn_decl) = self.global_scope.get(name) {
+                    if args.len() != fn_decl.params.len() {
+                        semantic_err!(
+                            stmt.loc, "Function `{}` accepts only {} parameters",
+                            name, fn_decl.params.len()
+                        );
+                    }
+                }
+
+                for arg in args {
+                    self.analyze_expr(arg);
+                }
+            },
+
+            StmtKind::If { cond, then, elzeifs, elze } => {
+                self.analyze_expr(cond);
+                self.analyze_block(then, in_loop);
+                for elzeif in elzeifs {
+                    self.analyze_expr(&elzeif.cond);
+                    self.analyze_block(&elzeif.then, in_loop);
+                }
+                self.analyze_block(elze, in_loop);
+            },
+
+            StmtKind::BuilinFnCall { name, arg } => {
+                match *name {
+                    "cmd" => {},
+                    "log" => {
+                        if !self.local_scope.contains_key(arg) {
+                            semantic_err!(stmt.loc, "Varible `{arg}` doesn't exist");
+                        }
+                    },
+
+                    _ => {
+                        semantic_err!(stmt.loc, "Builtin function `{name}` doesn't exist");
+                    }
+                }
+            },
+
+            StmtKind::For { body, init, cond, post }  => {
+                if let Some(s) = init { self.analyze_stmt(s, in_loop); }
+                if let Some(e) = cond { self.analyze_expr(e); }
+                if let Some(s) = post { self.analyze_stmt(s, in_loop); }
+                self.analyze_block(body, true);
+            },
+
+            StmtKind::Break => {
+                if !in_loop {
+                    semantic_err!(stmt.loc, "`break` is not in a loop");
+                }
+            },
+
+            StmtKind::Continue => {
+                if !in_loop {
+                    semantic_err!(stmt.loc, "`continue` is not in a loop");
+                }
+            },
+
+            StmtKind::Return => {
+                if self.curr_fn_decl.has_result {
+                    semantic_err!(
+                        stmt.loc, "Function `{}` must return value",
+                        self.curr_fn_decl.name
+                    );
+                }
+            },
+
+            StmtKind::ReturnVal(expr) => {
+                if !self.curr_fn_decl.has_result {
+                    semantic_err!(
+                        stmt.loc, "Function `{}` mustn't return value",
+                        self.curr_fn_decl.name
+                    );
+                }
+                self.analyze_expr(expr);
+            },
+        }
+    }
+
     fn analyze_block(&mut self, block: &Block<'a>, in_loop: bool) {
         for stmt in block {
-            match &stmt.kind {
-                StmtKind::VarDecl(name) => {
-                    if self.local_scope.contains_key(name) {
-                        semantic_err!(stmt.loc, "Redeclaration of variable `{name}`");
-                    }
-                    self.local_scope.insert(name, self.sp2);
-                    self.sp2 += 1;
-                },
-
-                StmtKind::VarAssign { name, expr } => {
-                    if !self.local_scope.contains_key(name) {
-                        semantic_err!(stmt.loc, "Variable `{name}` doesn't exist");
-                    }
-                    self.analyze_expr(expr);
-                },
-
-                StmtKind::FnCall { name, args } => {
-                    if let Some(fn_decl) = self.global_scope.get(name) {
-                        if args.len() != fn_decl.params.len() {
-                            semantic_err!(
-                                stmt.loc, "Function `{}` accepts only {} parameters",
-                                name, fn_decl.params.len()
-                            );
-                        }
-                    }
-
-                    for arg in args {
-                        self.analyze_expr(arg);
-                    }
-                },
-
-                StmtKind::If { cond, then, elzeifs, elze } => {
-                    self.analyze_expr(cond);
-                    self.analyze_block(then, in_loop);
-                    for elzeif in elzeifs {
-                        self.analyze_expr(&elzeif.cond);
-                        self.analyze_block(&elzeif.then, in_loop);
-                    }
-                    self.analyze_block(elze, in_loop);
-                },
-
-                StmtKind::BuilinFnCall { name, arg } => {
-                    match *name {
-                        "cmd" => {},
-                        "log" => {
-                            if !self.local_scope.contains_key(arg) {
-                                semantic_err!(stmt.loc, "Varible `{arg}` doesn't exist");
-                            }
-                        },
-
-                        _ => {
-                            semantic_err!(stmt.loc, "Builtin function `{name}` doesn't exist");
-                        }
-                    }
-                },
-
-                StmtKind::For { body }  => {
-                    self.analyze_block(body, true);
-                },
-
-                StmtKind::Break => {
-                    if !in_loop {
-                        semantic_err!(stmt.loc, "`break` is not in a loop");
-                    }
-                },
-
-                StmtKind::Continue => {
-                    if !in_loop {
-                        semantic_err!(stmt.loc, "`continue` is not in a loop");
-                    }
-                },
-
-                StmtKind::Return => {
-                    if self.curr_fn_decl.has_result {
-                        semantic_err!(
-                            stmt.loc, "Function `{}` must return value",
-                            self.curr_fn_decl.name
-                        );
-                    }
-                },
-
-                StmtKind::ReturnVal(expr) => {
-                    if !self.curr_fn_decl.has_result {
-                        semantic_err!(
-                            stmt.loc, "Function `{}` mustn't return value",
-                            self.curr_fn_decl.name
-                        );
-                    }
-                    self.analyze_expr(expr);
-                },
-            }
+            self.analyze_stmt(stmt, in_loop);
         }
     }
 }
