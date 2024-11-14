@@ -233,7 +233,6 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
         Token::Keyword(Keyword::Return) => {
             lex.next_any();
             if let Token::Punct(Punct::CloseCurly) = lex.expect_peek_any() {
-                lex.next_any();
                 Stmt {
                     loc: lex.loc.clone(),
                     kind: StmtKind::Return
