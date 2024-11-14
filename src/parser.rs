@@ -145,7 +145,10 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
 
             match lex.expect_peek_any() {
                 Token::Punct(Punct::Semicolon) => { lex.next_any(); },
-                _ => { init = Some(Box::new(parse_stmt(lex))); }
+                _ => {
+                    init = Some(Box::new(parse_stmt(lex)));
+                    lex.expect_punct(Punct::Semicolon);
+                }
             }
 
             match lex.expect_peek_any() {
@@ -175,7 +178,6 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
             let name = lex.expect_ident();
             match lex.expect_any() {
                 Token::StrLit(lit) => {
-                    lex.expect_punct(Punct::Semicolon);
                     Stmt {
                         loc, kind: StmtKind::BuilinFnCall {
                             name, arg: lit
@@ -191,13 +193,11 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
 
         Token::Keyword(Keyword::Continue) => {
             lex.next_any();
-            lex.expect_punct(Punct::Semicolon);
             Stmt { loc, kind: StmtKind::Continue }
         }
 
         Token::Keyword(Keyword::Break) => {
             lex.next_any();
-            lex.expect_punct(Punct::Semicolon);
             Stmt { loc, kind: StmtKind::Break }
         },
 
@@ -232,7 +232,7 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
 
         Token::Keyword(Keyword::Return) => {
             lex.next_any();
-            if let Token::Punct(Punct::Semicolon) = lex.expect_peek_any() {
+            if let Token::Punct(Punct::CloseCurly) = lex.expect_peek_any() {
                 lex.next_any();
                 Stmt {
                     loc: lex.loc.clone(),
@@ -240,7 +240,6 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
                 }
             } else {
                 let expr = parse_expr(lex, 0);
-                lex.expect_punct(Punct::Semicolon);
                 Stmt {
                     loc: lex.loc.clone(),
                     kind: StmtKind::ReturnVal(expr)
@@ -250,18 +249,11 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
 
         Token::Ident(var_name) => {
             lex.next_any();
-            match lex.expect_any() {
-                Token::Punct(Punct::Semicolon) => {
-                    Stmt {
-                        loc,
-                        kind: StmtKind::VarDecl(var_name)
-                    }
-                },
-
+            match lex.expect_peek_any() {
                 Token::Punct(Punct::Colon) => {
+                    lex.next_any();
                     lex.expect_punct(Punct::Eq);
                     let expr = parse_expr(lex, 0);
-                    lex.expect_punct(Punct::Semicolon);
                     Stmt {
                         loc,
                         kind: StmtKind::VarDeclAssign {
@@ -271,8 +263,8 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
                 },
 
                 Token::Punct(Punct::Eq) => {
+                    lex.next_any();
                     let expr = parse_expr(lex, 0);
-                    lex.expect_punct(Punct::Semicolon);
                     Stmt {
                         loc,
                         kind: StmtKind::VarAssign {
@@ -283,11 +275,11 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
                 },
 
                 Token::Punct(Punct::OpenParen) => {
-                    let mut args: Vec<Expr> = Vec::new();
+                    lex.next_any();
 
+                    let mut args: Vec<Expr> = Vec::new();
                     if lex.expect_peek_any() == Token::Punct(Punct::CloseParen) {
                         lex.next_any();
-                        lex.expect_punct(Punct::Semicolon);
                         return Stmt {
                             loc, kind: StmtKind::FnCall {
                                 args, name: var_name
@@ -304,7 +296,6 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
                         }
                     }
 
-                    lex.expect_punct(Punct::Semicolon);
                     Stmt {
                         loc, kind: StmtKind::FnCall {
                             args, name: var_name
@@ -312,7 +303,7 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
                     }
                 },
 
-                t @ _ => { unexpected_token_err!(lex.loc, t); }
+                _ => Stmt { loc, kind: StmtKind::VarDecl(var_name) }
             }
         },
 
@@ -398,13 +389,6 @@ pub fn parse_expr(lex: &mut Lexer, prec: u8) -> Expr {
 
     loop {
         match lex.expect_peek_any() {
-            Token::Punct(
-                Punct::Semicolon  |
-                Punct::CloseParen |
-                Punct::Comma      |
-                Punct::OpenCurly
-            ) => break,
-
             Token::BinOp(kind) => {
                 let this_prec = bin_op_prec(kind.clone());
                 if  this_prec < prec {
@@ -421,7 +405,7 @@ pub fn parse_expr(lex: &mut Lexer, prec: u8) -> Expr {
                 }
             },
 
-            t @ _ => { unexpected_token_err!(lex.loc, t); },
+            _ => break,
         }
     }
 
