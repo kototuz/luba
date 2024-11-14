@@ -42,6 +42,7 @@ pub struct Lexer<'a> {
 #[derive(Debug, PartialEq, Clone)]
 pub enum BinOpKind {
     Add,
+    Mod,
     Sub,
     Mul,
     Div,
@@ -197,6 +198,7 @@ impl<'a> Lexer<'a> {
             b'-' => { self.curr_token_len = 1; BinOpKind::Sub },
             b'*' => { self.curr_token_len = 1; BinOpKind::Mul },
             b'/' => { self.curr_token_len = 1; BinOpKind::Div },
+            b'%' => { self.curr_token_len = 1; BinOpKind::Mod },
             b'=' if self.src[self.pos+1] == b'=' => { self.curr_token_len = 2; BinOpKind::Eq },
             b'!' if self.src[self.pos+1] == b'=' => { self.curr_token_len = 2; BinOpKind::Ne },
             b'&' if self.src[self.pos+1] == b'&' => { self.curr_token_len = 2; BinOpKind::And },
@@ -349,6 +351,7 @@ impl fmt::Display for BinOpKind {
             BinOpKind::Sub => write!(f, "-"),
             BinOpKind::Mul => write!(f, "*"),
             BinOpKind::Div => write!(f, "/"),
+            BinOpKind::Mod => write!(f, "%"),
             BinOpKind::Eq  => write!(f, "=="),
             BinOpKind::Ne  => write!(f, "!="),
             BinOpKind::Gt  => write!(f, ">"),

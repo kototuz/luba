@@ -283,6 +283,7 @@ impl<'a> Compiler<'a> {
             BinOpKind::Sub => "sub",
             BinOpKind::Mul => "mul",
             BinOpKind::Div => "div",
+            BinOpKind::Mod => "mod",
             BinOpKind::Gt  => "gt",
             BinOpKind::Ge  => "ge",
             BinOpKind::Lt  => "lt",

@@ -417,7 +417,7 @@ fn bin_op_prec(bin_op_kind: BinOpKind) -> u8 {
         BinOpKind::And => 1,
         BinOpKind::Eq  | BinOpKind::Ne  => 2,
         BinOpKind::Add | BinOpKind::Sub => 4,
-        BinOpKind::Mul | BinOpKind::Div => 5,
+        BinOpKind::Mul | BinOpKind::Div | BinOpKind::Mod => 5,
         BinOpKind::Gt
         | BinOpKind::Ge
         | BinOpKind::Lt

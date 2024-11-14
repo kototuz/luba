@@ -14,13 +14,22 @@ fn sn(b1, q, n) int {
     return b1*(1 - pow(q, n))/(1-q)
 }
 
-fn main() {
-    res := bn(1, 2, 3)
-    @log "res"
-
-    for i := 0; i < 10; i = i+1 {
-        @cmd "say hello"
+fn fizzbuzz() {
+    for i := 1; i <= 20; i = i+1 {
+        fizz := i % 3 == 0
+        buzz := i % 5 == 0
+        if fizz && buzz {
+            @cmd "say FizzBuzz"
+        } else if fizz {
+            @cmd "say Fizz"
+        } else if buzz {
+            @cmd "say Buzz"
+        } else {
+            @log "i"
+        }
     }
+}
 
-    @cmd "say end!"
+fn main() {
+    fizzbuzz()
 }
