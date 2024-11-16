@@ -91,8 +91,8 @@ fn main() {
 
     //println!("===========================================");
 
-    let sem_data = semantic::Analyzer::analyze(&ast);     // semantic analyzis
-    //println!("{sem_data:#?}");
+    let scopes = semantic::Analyzer::analyze(&ast);     // semantic analyzis
+    //println!("{scopes:#?}");
 
-    compiler::compile(output, &ast, sem_data);
+    compiler::compile(output, &ast, scopes);
 }

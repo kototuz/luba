@@ -3,69 +3,67 @@ use std::collections::HashMap;
 use crate::parser::*;
 use super::{semantic_err, exit_failure};
 
-pub type VarName<'a>     = &'a str;
-pub type FnName<'a>      = &'a str;
-pub type SP2             = usize;
-pub type LocalScope<'a>  = HashMap<VarName<'a>, SP2>;
-pub type GlobalScope<'a> = HashMap<FnName<'a>, &'a FnDecl<'a>>;
+pub type Name<'a> = &'a str;
+pub type SP2      = usize;
+pub type ScopeIdx = usize;
+
+#[derive(Default, Debug)]
+pub struct Scope<'a> {
+    pub items:  HashMap<Name<'a>, Type>,
+    pub parent: ScopeIdx
+}
+
+#[derive(Debug)]
+pub struct FnDeclInfo {
+    pub has_result:  bool,
+    pub param_count: usize,
+    pub local_count: usize,
+}
+
+#[derive(Debug)]
+pub enum Type {
+    Var(SP2),
+    FnDecl(FnDeclInfo),
+}
 
 pub struct Analyzer<'a> {
-    global_scope: GlobalScope<'a>,
-    local_scope:  LocalScope<'a>,
-    curr_fn_decl: &'a FnDecl<'a>,
-    sp2:          usize
+    scopes: Vec<Scope<'a>>,
+    sp2:    SP2   
+}
+
+#[derive(Default)]
+struct Flags {
+    in_loop:    bool,
+    has_result: bool,
 }
 
 impl<'a> Analyzer<'a> {
-    pub fn analyze(ast: &'a Ast<'a>) -> Vec<LocalScope<'a>> {
-        let mut local_scopes: Vec<LocalScope> =
-            Vec::with_capacity(ast.fn_decls.len());
-
-        if ast.fn_decls.is_empty() {
-            return local_scopes;
-        }
-
-        let mut this = Self {
-            global_scope: GlobalScope::with_capacity(ast.fn_decls.len()),
-            local_scope:  LocalScope::new(),
-            curr_fn_decl: &ast.fn_decls[0],
-            sp2:          2,
+    pub fn analyze(ast: &'a Ast<'a>) -> Vec<Scope<'a>> {
+        let mut analyzer = Self {
+            scopes: Vec::new(),
+            sp2:    0,
         };
 
-        for fn_decl in &ast.fn_decls {
-            if this.global_scope.contains_key(fn_decl.name) {
-                semantic_err!(
-                    fn_decl.loc, "Redeclaration of function `{}`",
-                    fn_decl.name
-                );
-            }
+        analyzer.analyze_block(&ast.stmts, 0, &Flags::default());
 
-            this.global_scope.insert(fn_decl.name, &fn_decl);
+        analyzer.scopes
+    }
 
-            if fn_decl.has_result {
-                this.sp2 += 1;
-                for i in 0..fn_decl.params.len() {
-                    this.local_scope.insert(fn_decl.params[i], i+1);
-                }
-                this.check_return_value(&fn_decl.body);
-            } else {
-                for i in 0..fn_decl.params.len() {
-                    this.local_scope.insert(fn_decl.params[i], i);
-                }
-            }
-
-            this.sp2 += fn_decl.params.len();
-
-            this.curr_fn_decl = &fn_decl;
-            this.analyze_block(&fn_decl.body, false);
-
-
-            local_scopes.push(this.local_scope);
-            this.local_scope = LocalScope::new(); 
-            this.sp2 = 2;
+    fn name_exists_global(&self, name: Name<'a>, scope: ScopeIdx) -> bool {
+        if self.scopes[scope].items.contains_key(name) {
+            true
+        } else if scope != 0 {
+            self.name_exists_global(name, self.scopes[scope].parent)
+        } else {
+            false
         }
+    }
 
-        local_scopes
+    fn get_type_global(&self, name: Name<'a>, scope: ScopeIdx) -> Option<&Type> {
+        self.scopes[scope].items.get(name).or_else(|| {
+            if scope == 0 { return None; }
+            self.get_type_global(name, self.scopes[scope].parent)
+        })
     }
 
     fn check_return_value(&mut self, block: &Block<'a>) {
@@ -75,92 +73,131 @@ impl<'a> Analyzer<'a> {
         }
     }
 
-    fn analyze_expr(&mut self, expr: &Expr) {
+    fn analyze_expr(&mut self, expr: &Expr, scope: ScopeIdx) {
         match &expr.kind {
             ExprKind::Num(_) => {},
             ExprKind::Var(name) => {
-                if !self.local_scope.contains_key(name) {
-                    semantic_err!(expr.loc, "Variable `{name}` doesn't exist");
+                if !matches!(self.get_type_global(name, scope), Some(Type::Var(_))){
+                    semantic_err!(expr.loc, "Variable `{name}` is not found");
                 }
             },
 
             ExprKind::FnCall(data) => {
-                if let Some(fn_decl) = self.global_scope.get(data.name) {
+                if let Some(Type::FnDecl(fn_decl)) = self.get_type_global(data.name, scope){
                     if !fn_decl.has_result {
                         semantic_err!(expr.loc, "Function `{}` doesn't return value", data.name);
                     }
-                    if data.args.len() != fn_decl.params.len() {
+                    if data.args.len() != fn_decl.param_count {
                         semantic_err!(expr.loc, "Function `{}`'s arguments are incorrect", data.name);
                     }
                 } else {
-                    semantic_err!(expr.loc, "Function `{}` doesn't exist", data.name);
+                    semantic_err!(expr.loc, "Function `{}` is not found", data.name);
                 }
             },
 
             ExprKind::BinOp(data) => {
-                self.analyze_expr(&data.lhs);
-                self.analyze_expr(&data.rhs);
+                self.analyze_expr(&data.lhs, scope);
+                self.analyze_expr(&data.rhs, scope);
             },
         }
     }
 
-    fn analyze_stmt(&mut self, stmt: &Stmt<'a>, in_loop: bool) {
+    fn analyze_stmt(&mut self, stmt: &'a Stmt<'a>, scope_idx: ScopeIdx, flags: &Flags) {
         match &stmt.kind {
+            StmtKind::FnDecl(data) => {
+                if self.scopes[scope_idx].items.contains_key(data.name) {
+                    semantic_err!(stmt.loc, "Redeclaration of function `{}`", data.name);
+                }
+
+                let mut new_scope = Scope {
+                    items: HashMap::with_capacity(data.params.len()),
+                    parent: scope_idx
+                };
+
+                self.sp2 = if data.has_result { 1 } else { 0 };
+                for p in &data.params {
+                    new_scope.items.insert(p, Type::Var(self.sp2));
+                    self.sp2 += 1;
+                }
+                self.sp2 += 2;
+
+                let scope = self.scopes.len();
+                self.scopes.push(new_scope);
+                let flags = Flags {
+                    in_loop:    false,
+                    has_result: data.has_result
+                };
+
+                let mut local_count = self.sp2;
+                for stmt in &data.body {
+                    self.analyze_stmt(stmt, scope, &flags);
+                }
+                local_count = self.sp2 - local_count;
+
+                self.scopes[scope_idx].items.insert(data.name, Type::FnDecl(FnDeclInfo {
+                    has_result:  data.has_result,
+                    param_count: data.params.len(),
+                    local_count
+                }));
+            },
+
             StmtKind::VarDecl(name) => {
-                if self.local_scope.contains_key(name) {
+                if self.scopes[scope_idx].items.contains_key(name) {
                     semantic_err!(stmt.loc, "Redeclaration of variable `{name}`");
                 }
-                self.local_scope.insert(name, self.sp2);
+                self.scopes[scope_idx].items.insert(name, Type::Var(self.sp2));
                 self.sp2 += 1;
             },
 
             StmtKind::VarDeclAssign { name, expr } => {
-                if self.local_scope.contains_key(name) {
+                if self.scopes[scope_idx].items.contains_key(name) {
                     semantic_err!(stmt.loc, "Redeclaration of variable `{name}`");
                 }
-                self.analyze_expr(expr);
-                self.local_scope.insert(name, self.sp2);
+                self.analyze_expr(expr, scope_idx);
+                self.scopes[scope_idx].items.insert(name, Type::Var(self.sp2));
                 self.sp2 += 1;
             },
 
             StmtKind::VarAssign { name, expr } => {
-                if !self.local_scope.contains_key(name) {
-                    semantic_err!(stmt.loc, "Variable `{name}` doesn't exist");
+                if !matches!(self.get_type_global(name, scope_idx), Some(Type::Var(_))) {
+                    semantic_err!(stmt.loc, "Variable `{name}` is not found");
                 }
-                self.analyze_expr(expr);
+                self.analyze_expr(expr, scope_idx);
             },
 
             StmtKind::FnCall { name, args } => {
-                if let Some(fn_decl) = self.global_scope.get(name) {
-                    if args.len() != fn_decl.params.len() {
+                if let Some(Type::FnDecl(data)) = self.get_type_global(name, scope_idx){
+                    if args.len() != data.param_count {
                         semantic_err!(
                             stmt.loc, "Function `{}` accepts only {} parameters",
-                            name, fn_decl.params.len()
+                            name, data.param_count
                         );
                     }
+                } else {
+                    semantic_err!(stmt.loc, "Function `{name}` is not found");
                 }
 
                 for arg in args {
-                    self.analyze_expr(arg);
+                    self.analyze_expr(arg, scope_idx);
                 }
             },
 
             StmtKind::If { cond, then, elzeifs, elze } => {
-                self.analyze_expr(cond);
-                self.analyze_block(then, in_loop);
+                self.analyze_expr(cond, scope_idx);
+                self.analyze_block(then, scope_idx, flags);
                 for elzeif in elzeifs {
-                    self.analyze_expr(&elzeif.cond);
-                    self.analyze_block(&elzeif.then, in_loop);
+                    self.analyze_expr(&elzeif.cond, scope_idx);
+                    self.analyze_block(&elzeif.then, scope_idx, flags);
                 }
-                self.analyze_block(elze, in_loop);
+                self.analyze_block(elze, scope_idx, flags);
             },
 
             StmtKind::BuilinFnCall { name, arg } => {
                 match *name {
                     "cmd" => {},
                     "log" => {
-                        if !self.local_scope.contains_key(arg) {
-                            semantic_err!(stmt.loc, "Varible `{arg}` doesn't exist");
+                        if !matches!(self.get_type_global(arg, scope_idx), Some(Type::Var(_))) {
+                            semantic_err!(stmt.loc, "Varible `{arg}` is not found");
                         }
                     },
 
@@ -171,48 +208,48 @@ impl<'a> Analyzer<'a> {
             },
 
             StmtKind::For { body, init, cond, post }  => {
-                if let Some(s) = init { self.analyze_stmt(s, in_loop); }
-                if let Some(e) = cond { self.analyze_expr(e); }
-                if let Some(s) = post { self.analyze_stmt(s, in_loop); }
-                self.analyze_block(body, true);
+                // TODO: init statement must be in the for scope
+                if let Some(s) = init { self.analyze_stmt(s, scope_idx, flags); }
+                if let Some(e) = cond { self.analyze_expr(e, scope_idx); }
+                if let Some(s) = post { self.analyze_stmt(s, scope_idx, flags); }
+                self.analyze_block(body, scope_idx, &Flags {
+                    in_loop: true,
+                    has_result: flags.has_result
+                });
             },
 
             StmtKind::Break => {
-                if !in_loop {
+                if !flags.in_loop {
                     semantic_err!(stmt.loc, "`break` is not in a loop");
                 }
             },
 
             StmtKind::Continue => {
-                if !in_loop {
+                if !flags.in_loop {
                     semantic_err!(stmt.loc, "`continue` is not in a loop");
                 }
             },
 
             StmtKind::Return => {
-                if self.curr_fn_decl.has_result {
-                    semantic_err!(
-                        stmt.loc, "Function `{}` must return value",
-                        self.curr_fn_decl.name
-                    );
+                if flags.has_result {
+                    semantic_err!(stmt.loc, "The function must return value");
                 }
             },
 
             StmtKind::ReturnVal(expr) => {
-                if !self.curr_fn_decl.has_result {
-                    semantic_err!(
-                        stmt.loc, "Function `{}` mustn't return value",
-                        self.curr_fn_decl.name
-                    );
+                if !flags.has_result {
+                    semantic_err!(stmt.loc, "The function mustn't return value");
                 }
-                self.analyze_expr(expr);
+                self.analyze_expr(expr, scope_idx);
             },
         }
     }
 
-    fn analyze_block(&mut self, block: &Block<'a>, in_loop: bool) {
+    fn analyze_block(&mut self, block: &'a Block<'a>, scope: ScopeIdx, flags: &Flags) {
+        self.scopes.push(Scope { items: HashMap::new(), parent: scope });
+        let curr_scope = self.scopes.len()-1;
         for stmt in block {
-            self.analyze_stmt(stmt, in_loop);
+            self.analyze_stmt(stmt, curr_scope, flags);
         }
     }
 }

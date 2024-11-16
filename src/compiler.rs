@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs::File, io::{Seek, SeekFrom, Write}};
 
-use crate::{compilation_err, exit_failure, lexer::BinOpKind, parser::{Ast, Block, ExprKind, Stmt, StmtKind}, semantic::LocalScope};
+use crate::{compilation_err, exit_failure, lexer::BinOpKind, parser::{Ast, Block, ExprKind, Stmt, StmtKind}, semantic::{Name, Scope, ScopeIdx, Type, SP2}};
 
 type IP = usize;
 type FilePos = u64;
@@ -28,6 +28,8 @@ struct Compiler<'a> {
     jmp_labels: Vec<IP>,
     jmp_label_usages: Vec<JmpLabelUsage>,
 
+    curr_scope_idx: ScopeIdx,
+    scopes: Vec<Scope<'a>>,
     file: File,
     ip: IP,
 }
@@ -115,7 +117,7 @@ impl<'a> Compiler<'a> {
         self.seek(currpos);
     }
 
-    fn compile_expr(&mut self, expr: &ExprKind, scope: &LocalScope) {
+    fn compile_expr(&mut self, expr: &ExprKind, scope: ScopeIdx) {
         match expr {
             ExprKind::Num(n) => {
                 inst!(self, "const {{_:{n}}}");
@@ -124,7 +126,7 @@ impl<'a> Compiler<'a> {
             ExprKind::Var(name) => {
                 inst!(
                     self, "get_local {{_:{}}}",
-                    scope.get(name).unwrap()
+                    self.get_type_var(name, scope)
                 );
             },
 
@@ -145,18 +147,29 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_stmt(&mut self, stmt: &Stmt<'a>, scope: &LocalScope, lup: &Loop) {
+    fn get_type_var(&self, name: Name, scope: ScopeIdx) -> SP2 {
+        println!("{}", self.curr_scope_idx);
+        if let Some(Type::Var(sp2)) = self.scopes[scope].items.get(name) {
+            *sp2
+        } else if scope != 0 {
+            self.get_type_var(name, self.scopes[scope].parent)
+        } else {
+            unreachable!("{name}");
+        }
+    }
+
+    fn compile_stmt(&mut self, stmt: &Stmt<'a>, scope: ScopeIdx, lup: &Loop) {
         match &stmt.kind {
             StmtKind::VarDecl(_) => {},
             StmtKind::VarAssign { name, expr } => {
                 self.compile_expr(&expr.kind, scope);
-                let local_idx = scope.get(name).unwrap();
+                let local_idx = self.get_type_var(name, scope);
                 inst!(self, "set_local {{_:{local_idx}}}");
             },
 
             StmtKind::VarDeclAssign { name, expr } => {
                 self.compile_expr(&expr.kind, scope);
-                let local_idx = scope.get(name).unwrap();
+                let local_idx = self.get_type_var(name, scope);
                 inst!(self, "set_local {{_:{local_idx}}}");
             },
 
@@ -180,7 +193,7 @@ impl<'a> Compiler<'a> {
             StmtKind::BuilinFnCall { arg, name } => {
                 match *name {
                     "log" => {
-                        inst!(self, "log {{_:{}}}", scope.get(arg).unwrap());
+                        inst!(self, "log {{_:{}}}", self.get_type_var(arg, scope));
                     },
 
                     "cmd" => {
@@ -200,7 +213,10 @@ impl<'a> Compiler<'a> {
                 self.jmpif_label(then_label);
                 self.jmp_label(else_label);
                 self.set_jmp_label(then_label);
-                self.compile_block(then, scope, lup);
+
+                self.curr_scope_idx += 1;
+                self.compile_block(then, self.curr_scope_idx, lup);
+
                 self.jmp_label(end_label);
 
                 for elzeif in elzeifs {
@@ -213,12 +229,17 @@ impl<'a> Compiler<'a> {
                     self.jmpif_label(then_label);
                     self.jmp_label(else_label);
                     self.set_jmp_label(then_label);
-                    self.compile_block(&elzeif.then, scope, lup);
+
+                    self.curr_scope_idx += 1;
+                    self.compile_block(&elzeif.then, self.curr_scope_idx, lup);
+
                     self.jmp_label(end_label);
                 }
 
                 self.set_jmp_label(else_label);
-                self.compile_block(elze, scope, lup);
+
+                self.curr_scope_idx += 1;
+                self.compile_block(elze, self.curr_scope_idx, lup);
 
                 self.set_jmp_label(end_label);
             },
@@ -242,7 +263,9 @@ impl<'a> Compiler<'a> {
                     self.set_jmp_label(forloop_body);
                 }
 
-                self.compile_block(body, scope, &forlup);
+                self.curr_scope_idx += 1;
+                self.compile_block(body, self.curr_scope_idx, &forlup);
+
                 if let Some(s) = post {
                     self.compile_stmt(s, scope, &forlup);
                 }
@@ -258,10 +281,39 @@ impl<'a> Compiler<'a> {
             StmtKind::Continue => {
                 self.jmp_label(lup.start);
             },
+
+            StmtKind::FnDecl(data) => {
+                self.set_call_label(data.name);
+
+                let ret_label = self.new_jmp_label();
+                assert_eq!(ret_label, 0);
+
+                let local_len = if let Type::FnDecl(info) = self.scopes[0].items.get(data.name).unwrap() {
+                    info.local_count
+                } else {
+                    unreachable!()
+                };
+
+                // creating stack frame
+                inst!(self, "get_reg {{_:sp2}}");
+                cmd!(self, "scoreboard players operation sp2 redvm.regs = sp redvm.regs");
+                cmd!(self, "scoreboard players remove sp2 redvm.regs {}", data.params.len()+data.has_result as usize + 2);
+                cmd!(self, "scoreboard players add sp redvm.regs {}", local_len);
+
+                self.curr_scope_idx += 1;
+                self.compile_block(&data.body, self.curr_scope_idx, &Loop { start: 0, end: 0 });
+
+                self.set_jmp_label(ret_label);
+                cmd!(self, "scoreboard players remove sp redvm.regs {}", local_len);
+                inst!(self, "set_reg {{_:sp2}}");
+                inst!(self, "set_reg {{_:ip}}");
+
+                self.write_jmp_labels();
+            },
         }
     }
 
-    fn compile_block(&mut self, block: &Block<'a>, scope: &LocalScope, lup: &Loop) {
+    fn compile_block(&mut self, block: &Block<'a>, scope: ScopeIdx, lup: &Loop) {
         for stmt in block { self.compile_stmt(stmt, scope, lup); }
     }
 
@@ -296,44 +348,24 @@ impl<'a> Compiler<'a> {
     }
 }
 
-pub fn compile(file: File, ast: &Ast, semdata: Vec<LocalScope>) {
+pub fn compile(file: File, ast: &Ast, semdata: Vec<Scope>) {
+    println!("{semdata:#?}");
     let mut comp = Compiler {
         call_labels: HashMap::new(),
         call_label_usages: Vec::new(),
         jmp_labels: Vec::new(),
         jmp_label_usages: Vec::new(),
+        curr_scope_idx: 0,
+        scopes: semdata,
         file,
         ip: 0
     };
 
     comp.call_label("main");
     cmd!(comp, "scoreboard players set ip redvm.regs 1000");
-
-    for i in 0..ast.fn_decls.len() {
-        let fndecl = &ast.fn_decls[i];
-        comp.set_call_label(fndecl.name);
-
-        let ret_label = comp.new_jmp_label();
-        assert_eq!(ret_label, 0);
-
-        // creating stack frame
-        inst!(comp, "get_reg {{_:sp2}}");
-        cmd!(comp, "scoreboard players operation sp2 redvm.regs = sp redvm.regs");
-        cmd!(comp, "scoreboard players remove sp2 redvm.regs {}", fndecl.params.len()+fndecl.has_result as usize + 2);
-        cmd!(comp, "scoreboard players add sp redvm.regs {}", semdata[i].len()-fndecl.params.len());
-
-        comp.compile_block(&fndecl.body, &semdata[i], &Loop { start: 0, end: 0 });
-
-        comp.set_jmp_label(ret_label);
-        cmd!(comp, "scoreboard players remove sp redvm.regs {}", semdata[i].len()-fndecl.params.len());
-        inst!(comp, "set_reg {{_:sp2}}");
-        inst!(comp, "set_reg {{_:ip}}");
-
-        comp.write_jmp_labels();
-    }
+    comp.compile_block(&ast.stmts, 0, &Loop { start: 0, end: 0 });
 
     comp.write_call_labels();
 
     //println!("{ast:#?}");
-    //println!("{semdata:#?}");
 }

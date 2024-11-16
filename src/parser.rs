@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::lexer::*;
+use crate::{lexer::*, semantic_err};
 use super::{syntax_err, unexpected_token_err, exit_failure};
 
 pub type Block<'a> = Vec<Stmt<'a>>;
@@ -9,9 +9,8 @@ pub type Block<'a> = Vec<Stmt<'a>>;
 
 #[derive(Debug)]
 pub struct Ast<'a> {
-    pub fn_decls: Vec<FnDecl<'a>>,
+    pub stmts: Vec<Stmt<'a>>,
 }
-
 
 #[derive(Debug)]
 pub struct Stmt<'a> {
@@ -30,6 +29,7 @@ pub struct FnDecl<'a> {
 
 #[derive(Debug)]
 pub enum StmtKind<'a> {
+    FnDecl(FnDecl<'a>),
     FnCall { name: &'a str, args: Vec<Expr> },
     VarAssign { name: &'a str, expr: Expr },
     VarDeclAssign { name: &'a str, expr: Expr },
@@ -79,55 +79,21 @@ pub struct BinOpExpr {
 
 pub fn parse<'a>(lex: &mut Lexer<'a>) -> Ast<'a> {
     let mut ast = Ast {
-        fn_decls: Vec::new(),
+        stmts: Vec::new(),
     };
 
-    while let Some(token) = lex.next_any() {
-        // TODO: global variables
-        if token != Token::Keyword(Keyword::Fn) {
-            unexpected_token_err!(lex.loc, token);
-        } 
-
-        let loc = lex.loc.clone();
-        let name = lex.expect_ident();
-
-        // parameters
-        lex.expect_punct(Punct::OpenParen);
-        let mut params: Vec<&str> = Vec::new();
-        match lex.expect_any() {
-            Token::Punct(Punct::CloseParen) => {},
-            Token::Ident(param_name) => {
-                params.push(param_name);
-                loop {
-                    match lex.expect_any() {
-                        Token::Punct(Punct::CloseParen) => break,
-                        Token::Punct(Punct::Comma) => {
-                            params.push(lex.expect_ident());
-                        },
-                        t @ _ => { unexpected_token_err!(lex.loc, t); }
-                    }
-                }
-            },
-            t @ _ => { unexpected_token_err!(lex.loc, t); }
+    while let Some(_) = lex.peek_any() {
+        let stmt = parse_stmt(lex);
+        match stmt.kind {
+            StmtKind::FnDecl(_)  => {},
+            StmtKind::VarDecl(_) => {},
+            StmtKind::VarDeclAssign { .. } => {},
+            _ => {
+                semantic_err!(stmt.loc, "You cannot use that statement in the global scope");
+            }
         }
 
-        // result
-        let has_result = match lex.expect_peek_any() {
-            Token::Punct(Punct::OpenCurly) => false,
-            Token::Keyword(Keyword::Int) => {
-                lex.next_any();
-                true
-            },
-            t @ _ => { unexpected_token_err!(lex.loc, t); }
-        };
-
-        // body
-        let body = parse_block(lex);
-
-        ast.fn_decls.push(FnDecl {
-            name, params, loc,
-            has_result, body
-        });
+        ast.stmts.push(stmt);
     }
 
     ast
@@ -136,6 +102,52 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Ast<'a> {
 fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
     let loc = lex.loc.clone();
     match lex.expect_peek_any() {
+        Token::Keyword(Keyword::Fn) => {
+            lex.next_any();
+
+            let name = lex.expect_ident();
+
+            // parameters
+            lex.expect_punct(Punct::OpenParen);
+            let mut params: Vec<&str> = Vec::new();
+            match lex.expect_any() {
+                Token::Punct(Punct::CloseParen) => {},
+                Token::Ident(param_name) => {
+                    params.push(param_name);
+                    loop {
+                        match lex.expect_any() {
+                            Token::Punct(Punct::CloseParen) => break,
+                            Token::Punct(Punct::Comma) => {
+                                params.push(lex.expect_ident());
+                            },
+                            t @ _ => { unexpected_token_err!(lex.loc, t); }
+                        }
+                    }
+                },
+                t @ _ => { unexpected_token_err!(lex.loc, t); }
+            }
+
+            // result
+            let has_result = match lex.expect_peek_any() {
+                Token::Punct(Punct::OpenCurly) => false,
+                Token::Keyword(Keyword::Int) => {
+                    lex.next_any();
+                    true
+                },
+                t @ _ => { unexpected_token_err!(lex.loc, t); }
+            };
+
+            Stmt {
+                loc, kind: StmtKind::FnDecl(FnDecl {
+                    name,
+                    params,
+                    has_result,
+                    body: parse_block(lex),
+                    loc: Loc { col: 0, row: 0 } // TODO: this field is redundant
+                })
+            }
+        },
+
         Token::Keyword(Keyword::For) => {
             lex.next_any();
 
