@@ -2,6 +2,10 @@ fn add(a, b) int {
     return a + b
 }
 
+# this is fizzbuzz function
+# i%3 == 0             => Fuzz
+# i%5 == 0             => Fuzz
+# i%3 == 0 && i%5 == 0 => FuzzBuzz
 fn fizzbuzz() {
     fizz := 12341234
     for i := 1; i <= 20; i = i+1 {

@@ -232,7 +232,7 @@ impl<'a> Lexer<'a> {
     pub fn expect_ident(&mut self) -> &'static str {
         self.pos += self.curr_token_len;
         self.loc.col += self.curr_token_len;
-        if !self.skip_whitespace() {
+        if !self.skip_whitespace_and_comments() {
             if let Some(text) = self.ident() {
                 return text;
             }
@@ -261,7 +261,7 @@ impl<'a> Lexer<'a> {
         
         self.pos += self.curr_token_len;
         self.loc.col += self.curr_token_len;
-        if self.skip_whitespace() {
+        if self.skip_whitespace_and_comments() {
             self.curr_token_len = 0;
             return None;
         }
@@ -307,12 +307,19 @@ impl<'a> Lexer<'a> {
     }
 
     // returns true if the end is reached
-    fn skip_whitespace(&mut self) -> bool {
+    fn skip_whitespace_and_comments(&mut self) -> bool {
         if self.pos >= self.src.len() { return true; }
-        while self.src[self.pos].is_ascii_whitespace() {
+        while self.src[self.pos].is_ascii_whitespace() ||
+              self.src[self.pos] == b'#' {
             if self.src[self.pos] == b'\n' {
                 self.loc.row += 1;
                 self.loc.col = 1;
+            } else if self.src[self.pos] == b'#'  {
+                self.loc.row += 1;
+                self.loc.col = 1;
+                while self.src[self.pos] != b'\n' {
+                    self.pos += 1;
+                }
             } else {
                 self.loc.col += 1;
             }
