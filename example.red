@@ -21,4 +21,12 @@ fn fizzbuzz() {
 
 fn main() {
     fizzbuzz()
+
+    for i := 0; i < 10; i = i+1 {
+        @cmd "say Hello"
+    }
+
+    for i := 0; i < 10; i = i+1 {
+        @cmd "say Bye"
+    }
 }

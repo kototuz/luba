@@ -208,14 +208,20 @@ impl<'a> Analyzer<'a> {
             },
 
             StmtKind::For { body, init, cond, post }  => {
-                // TODO: init statement must be in the for scope
-                if let Some(s) = init { self.analyze_stmt(s, scope_idx, flags); }
-                if let Some(e) = cond { self.analyze_expr(e, scope_idx); }
-                if let Some(s) = post { self.analyze_stmt(s, scope_idx, flags); }
-                self.analyze_block(body, scope_idx, &Flags {
+                self.scopes.push(Scope { items: HashMap::new(), parent: scope_idx });
+                let for_scope = self.scopes.len()-1;
+                let for_flags = Flags {
                     in_loop: true,
                     has_result: flags.has_result
-                });
+                };
+
+                if let Some(s) = init { self.analyze_stmt(s, for_scope, &for_flags); }
+                if let Some(e) = cond { self.analyze_expr(e, for_scope); }
+                if let Some(s) = post { self.analyze_stmt(s, for_scope, &for_flags); }
+
+                for stmt in body {
+                    self.analyze_stmt(stmt, for_scope, &for_flags);
+                }
             },
 
             StmtKind::Break => {

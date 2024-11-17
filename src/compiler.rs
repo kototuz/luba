@@ -148,7 +148,6 @@ impl<'a> Compiler<'a> {
     }
 
     fn get_type_var(&self, name: Name, scope: ScopeIdx) -> SP2 {
-        println!("{}", self.curr_scope_idx);
         if let Some(Type::Var(sp2)) = self.scopes[scope].items.get(name) {
             *sp2
         } else if scope != 0 {
@@ -214,8 +213,7 @@ impl<'a> Compiler<'a> {
                 self.jmp_label(else_label);
                 self.set_jmp_label(then_label);
 
-                self.curr_scope_idx += 1;
-                self.compile_block(then, self.curr_scope_idx, lup);
+                self.compile_block(then, lup);
 
                 self.jmp_label(end_label);
 
@@ -230,16 +228,14 @@ impl<'a> Compiler<'a> {
                     self.jmp_label(else_label);
                     self.set_jmp_label(then_label);
 
-                    self.curr_scope_idx += 1;
-                    self.compile_block(&elzeif.then, self.curr_scope_idx, lup);
+                    self.compile_block(&elzeif.then, lup);
 
                     self.jmp_label(end_label);
                 }
 
                 self.set_jmp_label(else_label);
 
-                self.curr_scope_idx += 1;
-                self.compile_block(elze, self.curr_scope_idx, lup);
+                self.compile_block(elze, lup);
 
                 self.set_jmp_label(end_label);
             },
@@ -250,24 +246,25 @@ impl<'a> Compiler<'a> {
                     end:   self.new_jmp_label(),
                 };
 
+                let forloop_scope = self.curr_scope_idx;
+
                 if let Some(s) = init {
-                    self.compile_stmt(s, scope, &lup);
+                    self.compile_stmt(s, forloop_scope, &lup);
                 }
 
                 self.set_jmp_label(forlup.start);
                 if let Some(e) = cond {
                     let forloop_body = self.new_jmp_label();
-                    self.compile_expr(&e.kind, scope);
+                    self.compile_expr(&e.kind, forloop_scope);
                     self.jmpif_label(forloop_body);
                     self.jmp_label(forlup.end);
                     self.set_jmp_label(forloop_body);
                 }
 
-                self.curr_scope_idx += 1;
-                self.compile_block(body, self.curr_scope_idx, &forlup);
+                self.compile_block(body, &forlup);
 
                 if let Some(s) = post {
-                    self.compile_stmt(s, scope, &forlup);
+                    self.compile_stmt(s, forloop_scope, &forlup);
                 }
 
                 self.jmp_label(forlup.start);
@@ -300,8 +297,7 @@ impl<'a> Compiler<'a> {
                 cmd!(self, "scoreboard players remove sp2 redvm.regs {}", data.params.len()+data.has_result as usize + 2);
                 cmd!(self, "scoreboard players add sp redvm.regs {}", local_len);
 
-                self.curr_scope_idx += 1;
-                self.compile_block(&data.body, self.curr_scope_idx, &Loop { start: 0, end: 0 });
+                self.compile_block(&data.body, &Loop { start: 0, end: 0 });
 
                 self.set_jmp_label(ret_label);
                 cmd!(self, "scoreboard players remove sp redvm.regs {}", local_len);
@@ -313,8 +309,10 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile_block(&mut self, block: &Block<'a>, scope: ScopeIdx, lup: &Loop) {
-        for stmt in block { self.compile_stmt(stmt, scope, lup); }
+    fn compile_block(&mut self, block: &Block<'a>, lup: &Loop) {
+        let curr_scope = self.curr_scope_idx;
+        self.curr_scope_idx += 1;
+        for stmt in block { self.compile_stmt(stmt, curr_scope, lup); }
     }
 
     fn curr_pos(&mut self) -> FilePos {
@@ -349,7 +347,7 @@ impl<'a> Compiler<'a> {
 }
 
 pub fn compile(file: File, ast: &Ast, semdata: Vec<Scope>) {
-    println!("{semdata:#?}");
+    //println!("{semdata:#?}");
     let mut comp = Compiler {
         call_labels: HashMap::new(),
         call_label_usages: Vec::new(),
@@ -363,7 +361,7 @@ pub fn compile(file: File, ast: &Ast, semdata: Vec<Scope>) {
 
     comp.call_label("main");
     cmd!(comp, "scoreboard players set ip redvm.regs 1000");
-    comp.compile_block(&ast.stmts, 0, &Loop { start: 0, end: 0 });
+    comp.compile_block(&ast.stmts, &Loop { start: 0, end: 0 });
 
     comp.write_call_labels();
 
