@@ -1,4 +1,4 @@
-# red
+# luba
 Programming language based on minecraft commands
 
 ## Snippet
