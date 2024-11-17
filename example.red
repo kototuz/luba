@@ -19,14 +19,12 @@ fn fizzbuzz() {
     }
 }
 
+extern setblock(int, int, int)
+
 fn main() {
-    fizzbuzz()
-
-    for i := 0; i < 10; i = i+1 {
-        @cmd "say Hello"
-    }
-
-    for i := 0; i < 10; i = i+1 {
-        @cmd "say Bye"
+    for x := 31; x < 41; x = x+1 {
+        for z := 55; z < 65; z = z+1 {
+            setblock(x, 151, z)
+        }
     }
 }

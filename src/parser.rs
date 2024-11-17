@@ -24,12 +24,12 @@ pub struct FnDecl<'a> {
     pub params: Vec<&'a str>,
     pub has_result: bool,
     pub body: Block<'a>,
-    pub loc: Loc,
 }
 
 #[derive(Debug)]
 pub enum StmtKind<'a> {
     FnDecl(FnDecl<'a>),
+    ExternFnDecl { name: &'a str, param_count: usize },
     FnCall { name: &'a str, args: Vec<Expr> },
     VarAssign { name: &'a str, expr: Expr },
     VarDeclAssign { name: &'a str, expr: Expr },
@@ -85,6 +85,7 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Ast<'a> {
     while let Some(_) = lex.peek_any() {
         let stmt = parse_stmt(lex);
         match stmt.kind {
+            StmtKind::ExternFnDecl { .. } => {},
             StmtKind::FnDecl(_)  => {},
             StmtKind::VarDecl(_) => {},
             StmtKind::VarDeclAssign { .. } => {},
@@ -102,6 +103,42 @@ pub fn parse<'a>(lex: &mut Lexer<'a>) -> Ast<'a> {
 fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
     let loc = lex.loc.clone();
     match lex.expect_peek_any() {
+        Token::Keyword(Keyword::Extern) => {
+            lex.next_any();
+
+            let name = lex.expect_ident();
+
+            // parameters
+            lex.expect_punct(Punct::OpenParen);
+            let mut param_count = 0;
+            match lex.expect_any() {
+                Token::Punct(Punct::CloseParen) => {},
+                Token::Keyword(Keyword::Int) => {
+                    param_count += 1;
+                    loop {
+                        match lex.expect_any() {
+                            Token::Punct(Punct::CloseParen) => break,
+                            Token::Punct(Punct::Comma) => {
+                                match lex.expect_any() {
+                                    Token::Keyword(Keyword::Int) => param_count += 1,
+                                    t @ _ => { unexpected_token_err!(lex.loc, t); }
+                                }
+                            },
+                            t @ _ => { unexpected_token_err!(lex.loc, t); }
+                        }
+                    }
+                },
+                t @ _ => { unexpected_token_err!(lex.loc, t); }
+            }
+
+            Stmt {
+                loc, kind: StmtKind::ExternFnDecl {
+                    name,
+                    param_count
+                }
+            }
+        },
+
         Token::Keyword(Keyword::Fn) => {
             lex.next_any();
 
@@ -143,7 +180,6 @@ fn parse_stmt<'a>(lex: &mut Lexer<'a>) -> Stmt<'a> {
                     params,
                     has_result,
                     body: parse_block(lex),
-                    loc: Loc { col: 0, row: 0 } // TODO: this field is redundant
                 })
             }
         },

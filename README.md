@@ -35,6 +35,7 @@ List of instructions (functions):
 - const     `{_:<number>}`
 - get_local `{_:<index>}`
 - set_local `{_:<index>}`
+- see_local `{_:<index>}`
 - log       `{_:<index>}`
 - set_reg   `{_:<reg>}`
 - get_reg   `{_:<reg>}`

@@ -104,6 +104,18 @@ impl<'a> Analyzer<'a> {
 
     fn analyze_stmt(&mut self, stmt: &'a Stmt<'a>, scope_idx: ScopeIdx, flags: &Flags) {
         match &stmt.kind {
+            StmtKind::ExternFnDecl { name, param_count } => {
+                if self.scopes[scope_idx].items.contains_key(name) {
+                    semantic_err!(stmt.loc, "Redeclaration of function `{}`", name);
+                }
+
+                self.scopes[scope_idx].items.insert(name, Type::FnDecl(FnDeclInfo {
+                    param_count: *param_count,
+                    has_result: false,
+                    local_count: 0,
+                }));
+            },
+
             StmtKind::FnDecl(data) => {
                 if self.scopes[scope_idx].items.contains_key(data.name) {
                     semantic_err!(stmt.loc, "Redeclaration of function `{}`", data.name);

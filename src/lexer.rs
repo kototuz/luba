@@ -66,6 +66,7 @@ pub enum Keyword {
     Int,
     Break,
     Continue,
+    Extern,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -101,6 +102,7 @@ impl<'a> Lexer<'a> {
         ("int",      Keyword::Int),
         ("break",    Keyword::Break),
         ("continue", Keyword::Continue),
+        ("extern",   Keyword::Extern),
     ];
 
     pub fn new(src: &'a [u8]) -> Self {
@@ -375,6 +377,7 @@ impl fmt::Display for Keyword {
             Keyword::Int      => write!(f, "int"),
             Keyword::Break    => write!(f, "break"),
             Keyword::Continue => write!(f, "continue"),
+            Keyword::Extern   => write!(f, "extern"),
         }
     }
 }

@@ -279,6 +279,27 @@ impl<'a> Compiler<'a> {
                 self.jmp_label(lup.start);
             },
 
+            StmtKind::ExternFnDecl { name, param_count } => {
+                self.set_call_label(name);
+
+                // creating new stack
+                inst!(self, "get_reg {{_:sp2}}");
+                cmd!(self, "scoreboard players operation sp2 redvm.regs = sp redvm.regs");
+                cmd!(self, "scoreboard players remove sp2 redvm.regs {}", param_count+2);
+
+                // loading args to extern function
+                for i in 0..*param_count {
+                    cmd!(self, "execute store result storage redvm eargs.{i} int 1 run function redvm:insts/see_local {{_:{i}}}");
+                }
+
+                // calling extern function 
+                cmd!(self, "function redvm:extern/{name} with storage redvm eargs");
+
+                // return
+                inst!(self, "set_reg {{_:sp2}}");
+                inst!(self, "set_reg {{_:ip}}");
+            },
+
             StmtKind::FnDecl(data) => {
                 self.set_call_label(data.name);
 
