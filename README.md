@@ -3,7 +3,7 @@ Programming language based on minecraft commands
 
 ## Snippet
 
-``` text
+``` luba
 fn main() {
     a := 2;
     b := a*a;
