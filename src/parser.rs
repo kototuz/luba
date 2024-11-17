@@ -396,6 +396,15 @@ pub fn parse_expr(lex: &mut Lexer, prec: u8) -> Expr {
     // the implementation based on the Pratt Parsing algorithm
     let token: Token;
     let mut lhs = match lex.expect_any() {
+        Token::BinOp(BinOpKind::Sub) => {
+            match lex.expect_any() {
+                Token::Number(n) => Expr {
+                    loc: lex.loc.clone(),
+                    kind: ExprKind::Num(-n)
+                },
+                t @ _ => { unexpected_token_err!(lex.loc, t); }
+            }
+        },
         Token::Number(n) => Expr { loc: lex.loc.clone(), kind: ExprKind::Num(n) },
         Token::Ident(name) => {
             if lex.expect_peek_any() == Token::Punct(Punct::OpenParen) {

@@ -22,7 +22,7 @@ fn fizzbuzz() {
 extern setblock(int, int, int)
 
 fn main() {
-    for x := 31; x < 41; x = x+1 {
+    for x := -31; x < 41; x = x+1 {
         for z := 55; z < 65; z = z+1 {
             setblock(x, 151, z)
         }
